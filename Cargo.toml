@@ -1,0 +1,48 @@
+[workspace]
+members = [
+    "crates/nanite-cli",
+    "crates/nanite-core",
+    "crates/nanite-git",
+    "crates/nanite-agents",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+publish = false
+rust-version = "1.94"
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "=1.0.102"
+assert_cmd = "=2.2.0"
+camino = { version = "=1.2.2", features = ["serde1"] }
+clap = { version = "=4.6.0", features = ["derive", "wrap_help"] }
+clap_complete = "=4.6.0"
+indicatif = "=0.18.4"
+inquire = "=0.9.4"
+predicates = "=3.1.4"
+rayon = "=1.11.0"
+regex = "=1.12.3"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
+serde_yaml = "=0.9.34"
+tera = "=1.20.1"
+tempfile = "=3.27.0"
+time = { version = "=0.3.47", features = ["formatting", "macros", "parsing", "serde"] }
+toml = "=1.1.0"
+url = "=2.5.8"
+walkdir = "=2.5.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+cargo_common_metadata = "allow"
+future_not_send = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
+needless_pass_by_value = "allow"

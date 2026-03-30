@@ -1,0 +1,4 @@
+interface:
+  display_name: "Complete Template"
+  short_description: "Finish a Nanite init draft and write the final file"
+  default_prompt: "Use $complete-template to read .nanite/init/session.md, fill the draft's AI slots, and write the requested target file."

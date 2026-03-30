@@ -1,0 +1,4 @@
+interface:
+  display_name: "Conventional Commits"
+  short_description: "Create accurate, comprehensive conventional commits"
+  default_prompt: "Use $conventional-commits to inspect the current git changes, split them into logical commits if needed, and create accurate conventional commit messages."
