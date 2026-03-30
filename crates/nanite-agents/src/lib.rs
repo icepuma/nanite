@@ -171,7 +171,7 @@ pub fn sync_codex(
         let render_path = render_root.join(&skill.slug);
         let install_path = install_root.join(&skill.slug);
         let target = inspect_codex_target(&render_path, &install_path, &rendered)?;
-        let action = classify_sync(&[target.clone()]);
+        let action = classify_sync(std::slice::from_ref(&target));
         if apply && action != SyncAction::Unchanged {
             write_rendered_tree(&render_path, &rendered)?;
             ensure_symlink(&render_path, &install_path)?;

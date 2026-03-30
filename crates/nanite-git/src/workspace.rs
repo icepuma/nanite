@@ -24,15 +24,12 @@ pub fn clone_repo(
     prepare_clone_destination(&destination, force)?;
 
     let should_interrupt = AtomicBool::new(false);
-    match progress_bar {
-        Some(progress_bar) => {
-            let mut progress = CloneProgress::new(progress_bar);
-            perform_clone(remote, &destination, &mut progress, &should_interrupt)?;
-        }
-        None => {
-            let mut progress = gix::progress::Discard;
-            perform_clone(remote, &destination, &mut progress, &should_interrupt)?;
-        }
+    if let Some(progress_bar) = progress_bar {
+        let mut progress = CloneProgress::new(progress_bar);
+        perform_clone(remote, &destination, &mut progress, &should_interrupt)?;
+    } else {
+        let mut progress = gix::progress::Discard;
+        perform_clone(remote, &destination, &mut progress, &should_interrupt)?;
     }
 
     Ok(record_from_spec(
@@ -263,9 +260,8 @@ pub fn remove_repo(workspace_root: &Utf8Path, target: &str) -> Result<Utf8PathBu
 }
 
 pub fn configured_author_name(cwd: &Utf8Path) -> Result<Option<String>> {
-    let repo = match gix::discover(cwd.as_std_path()) {
-        Ok(repo) => repo,
-        Err(_) => return Ok(None),
+    let Ok(repo) = gix::discover(cwd.as_std_path()) else {
+        return Ok(None);
     };
 
     let author = repo

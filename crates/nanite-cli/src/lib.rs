@@ -21,6 +21,7 @@ use nanite_git::{
 };
 use rayon::prelude::*;
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::process::{Command, Output, Stdio};
@@ -333,8 +334,8 @@ fn command_init_with_prompter(
     }
     let prepared = bundle.prepare_with_seed_values(seed_values, prompter)?;
     let mut progress = InitProgress::new(&prepared);
-    progress.mark_done(progress.select_step_index(), None);
-    progress.mark_done(progress.collect_inputs_step_index(), None);
+    progress.mark_done(InitProgress::select_step_index(), None);
+    progress.mark_done(InitProgress::collect_inputs_step_index(), None);
     let targets = match render_bundle(context, current_dir, &prepared, force, &mut progress) {
         Ok(targets) => {
             progress.finish_success();
@@ -358,300 +359,14 @@ fn render_bundle(
     force: bool,
     progress: &mut InitProgress,
 ) -> Result<Vec<Utf8PathBuf>> {
-    let targets = prepared
-        .templates()
-        .iter()
-        .map(|template| template.target_path(cwd))
-        .collect::<Vec<_>>();
-    for target in &targets {
-        if let Err(error) = ensure_target_state(target, force) {
-            progress.fail(progress.write_step_index(), &error.to_string());
-            return Err(error);
-        }
-    }
-
+    let targets = collect_target_paths(prepared, cwd);
+    ensure_targets_ready(&targets, force, progress)?;
     let debug = InitDebugArtifacts::new(cwd, &prepared.name)?;
-    let mut ai_values_by_template = BTreeMap::<Utf8PathBuf, BTreeMap<usize, String>>::new();
     if prepared.requires_agent() {
-        progress.start(progress.inspect_step_index(), None);
-        let context_bundles = prepared
-            .templates()
-            .iter()
-            .map(|template| (template.source_path.clone(), template.build_context_bundle(cwd)))
-            .collect::<BTreeMap<_, _>>();
-        if let Err(error) = debug.write_bundle_context(&context_bundles) {
-            progress.fail(progress.inspect_step_index(), &error.to_string());
-            return Err(error);
-        }
-        progress.mark_done(progress.inspect_step_index(), None);
-
-        let mut all_fragments = Vec::new();
-        for template in prepared.templates() {
-            let context_bundle = context_bundles
-                .get(&template.source_path)
-                .expect("template context bundle should exist");
-            for fragment in template.ai_fragments() {
-                let empty_ai = BTreeMap::new();
-                let request = template.build_ai_fragment_request(
-                    cwd,
-                    context_bundle,
-                    &fragment,
-                    &empty_ai,
-                    &[],
-                );
-                all_fragments.push((template, fragment, request));
-            }
-        }
-
-        let generate_step = progress.generate_step_index();
-        let fragment_count = all_fragments.len();
-        progress.start(
-            generate_step,
-            Some(&format!(
-                "{} fragment{} across {} file{}",
-                fragment_count,
-                if fragment_count == 1 { "" } else { "s" },
-                prepared.templates().len(),
-                if prepared.templates().len() == 1 { "" } else { "s" }
-            )),
-        );
-        let generated = all_fragments
-            .into_par_iter()
-            .enumerate()
-            .map(|(offset, (template, fragment, request))| -> Result<GeneratedAiFragment> {
-                let request = request?;
-                let prompt = build_ai_fragment_prompt(&request);
-                debug.write_fragment_prompt(
-                    "generate",
-                    offset + 1,
-                    &format!("{}-{}", template.output_name, fragment.label),
-                    &prompt,
-                )?;
-                let replacement = run_ai_fragment(context, &prompt)?;
-                debug.write_fragment_output(
-                    "generate",
-                    offset + 1,
-                    &format!("{}-{}", template.output_name, fragment.label),
-                    &replacement,
-                )?;
-                Ok(GeneratedAiFragment {
-                    template_source_path: template.source_path.clone(),
-                    fragment,
-                    replacement,
-                })
-            })
-            .collect::<Vec<_>>();
-        let mut generated_fragments = Vec::with_capacity(generated.len());
-        for result in generated {
-            match result {
-                Ok(fragment) => generated_fragments.push(fragment),
-                Err(error) => {
-                    progress.fail(generate_step, &error.to_string());
-                    return Err(error);
-                }
-            }
-        }
-        for generated in generated_fragments {
-            ai_values_by_template
-                .entry(generated.template_source_path)
-                .or_default()
-                .insert(generated.fragment.placeholder.index, generated.replacement);
-        }
-        progress.mark_done(generate_step, None);
-
-        let verify_step = progress.verify_step_index();
-        progress.start(verify_step, None);
-        let mut rendered_by_template = BTreeMap::new();
-        let mut repair_jobs = Vec::new();
-        for template in prepared.templates() {
-            let ai_values = ai_values_by_template
-                .get(&template.source_path)
-                .cloned()
-                .unwrap_or_default();
-            let rendered = template.render_final(&ai_values)?;
-            if template.is_readme() {
-                let context_bundle = context_bundles
-                    .get(&template.source_path)
-                    .expect("template context bundle should exist");
-                let report = template.verify_readme(&rendered, context_bundle, &ai_values);
-                if let Err(error) = debug.write_verifier_report(
-                    &format!("initial-{}", template.output_name),
-                    &report,
-                    &rendered,
-                ) {
-                    progress.fail(verify_step, &error.to_string());
-                    return Err(error);
-                }
-                if !report.is_valid() {
-                    if report.has_non_repairable_findings() {
-                        let summary = format_readme_verifier_messages(&report);
-                        progress.fail(verify_step, &summary);
-                        return Err(anyhow!(summary));
-                    }
-                    let fragments_by_index = template
-                        .ai_fragments()
-                        .into_iter()
-                        .map(|fragment| (fragment.placeholder.index, fragment))
-                        .collect::<BTreeMap<_, _>>();
-                    for fragment_index in report.repairable_fragment_indexes() {
-                        let fragment = fragments_by_index
-                            .get(&fragment_index)
-                            .ok_or_else(|| anyhow!("missing README fragment metadata for repair index {fragment_index}"))?
-                            .clone();
-                        let notes = report
-                            .findings
-                            .iter()
-                            .filter(|finding| finding.fragment_index == Some(fragment_index))
-                            .map(|finding| finding.message.clone())
-                            .collect::<Vec<_>>();
-                        repair_jobs.push(RepairAiFragmentJob {
-                            template: template.clone(),
-                            fragment,
-                            notes,
-                        });
-                    }
-                }
-            } else if rendered.contains("{{") || rendered.contains("}}") {
-                let summary = format!(
-                    "{} still contains unresolved template placeholders",
-                    template.output_name
-                );
-                progress.fail(verify_step, &summary);
-                return Err(anyhow!(summary));
-            }
-            rendered_by_template.insert(template.source_path.clone(), rendered);
-        }
-        if repair_jobs.is_empty() {
-            progress.mark_done(verify_step, None);
-            progress.mark_done(progress.repair_step_index(), Some("not needed"));
-            progress.mark_done(progress.reverify_step_index(), Some("not needed"));
-        } else {
-            progress.mark_done(verify_step, Some("needs repair"));
-            let repair_step = progress.repair_step_index();
-            progress.start(
-                repair_step,
-                Some(&format!(
-                    "{} fragment{}",
-                    repair_jobs.len(),
-                    if repair_jobs.len() == 1 { "" } else { "s" }
-                )),
-            );
-            let repaired = repair_jobs
-                .into_par_iter()
-                .enumerate()
-                .map(|(offset, job)| -> Result<GeneratedAiFragment> {
-                    let context_bundle = context_bundles
-                        .get(&job.template.source_path)
-                        .expect("template context bundle should exist");
-                    let current_ai = ai_values_by_template
-                        .get(&job.template.source_path)
-                        .cloned()
-                        .unwrap_or_default();
-                    let request = job.template.build_ai_fragment_request(
-                        cwd,
-                        context_bundle,
-                        &job.fragment,
-                        &current_ai,
-                        &job.notes,
-                    )?;
-                    let prompt = build_ai_fragment_prompt(&request);
-                    debug.write_fragment_prompt(
-                        "repair",
-                        offset + 1,
-                        &format!("{}-{}", job.template.output_name, job.fragment.label),
-                        &prompt,
-                    )?;
-                    let replacement = run_ai_fragment(context, &prompt)?;
-                    debug.write_fragment_output(
-                        "repair",
-                        offset + 1,
-                        &format!("{}-{}", job.template.output_name, job.fragment.label),
-                        &replacement,
-                    )?;
-                    Ok(GeneratedAiFragment {
-                        template_source_path: job.template.source_path,
-                        fragment: job.fragment,
-                        replacement,
-                    })
-                })
-                .collect::<Vec<_>>();
-            let mut repaired_fragments = Vec::with_capacity(repaired.len());
-            for result in repaired {
-                match result {
-                    Ok(fragment) => repaired_fragments.push(fragment),
-                    Err(error) => {
-                        progress.fail(repair_step, &error.to_string());
-                        return Err(error);
-                    }
-                }
-            }
-            for repaired in repaired_fragments {
-                ai_values_by_template
-                    .entry(repaired.template_source_path)
-                    .or_default()
-                    .insert(repaired.fragment.placeholder.index, repaired.replacement);
-            }
-            progress.mark_done(repair_step, None);
-
-            let reverify_step = progress.reverify_step_index();
-            progress.start(reverify_step, None);
-            for template in prepared.templates() {
-                let ai_values = ai_values_by_template
-                    .get(&template.source_path)
-                    .cloned()
-                    .unwrap_or_default();
-                let rendered = template.render_final(&ai_values)?;
-                if template.is_readme() {
-                    let context_bundle = context_bundles
-                        .get(&template.source_path)
-                        .expect("template context bundle should exist");
-                    let report = template.verify_readme(&rendered, context_bundle, &ai_values);
-                    if let Err(error) = debug.write_verifier_report(
-                        &format!("repair-{}", template.output_name),
-                        &report,
-                        &rendered,
-                    ) {
-                        progress.fail(reverify_step, &error.to_string());
-                        return Err(error);
-                    }
-                    if !report.is_valid() {
-                        let summary = format_readme_verifier_messages(&report);
-                        progress.fail(reverify_step, &summary);
-                        return Err(anyhow!(summary));
-                    }
-                }
-                rendered_by_template.insert(template.source_path.clone(), rendered);
-            }
-            progress.mark_done(reverify_step, None);
-        }
-
-        let write_step = progress.write_step_index();
-        progress.start(write_step, None);
-        for template in prepared.templates() {
-            let target = template.target_path(cwd);
-            let rendered = rendered_by_template
-                .get(&template.source_path)
-                .ok_or_else(|| anyhow!("missing rendered output for {}", template.output_name))?;
-            if let Err(error) = write_rendered_output(&target, rendered) {
-                progress.fail(write_step, &error.to_string());
-                return Err(error);
-            }
-        }
-        progress.mark_done(write_step, None);
-        return Ok(targets);
+        render_agent_bundle(context, cwd, prepared, progress, &debug)?;
+    } else {
+        render_static_bundle(cwd, prepared, progress)?;
     }
-
-    let write_step = progress.write_step_index();
-    progress.start(write_step, None);
-    for template in prepared.templates() {
-        let rendered = template.render_final(&BTreeMap::new())?;
-        let target = template.target_path(cwd);
-        if let Err(error) = write_rendered_output(&target, &rendered) {
-            progress.fail(write_step, &error.to_string());
-            return Err(error);
-        }
-    }
-    progress.mark_done(write_step, None);
     Ok(targets)
 }
 
@@ -665,6 +380,414 @@ struct RepairAiFragmentJob {
     template: PreparedTemplate,
     fragment: AiFragment,
     notes: Vec<String>,
+}
+
+struct VerificationOutcome {
+    rendered_by_template: BTreeMap<Utf8PathBuf, String>,
+    repair_jobs: Vec<RepairAiFragmentJob>,
+}
+
+fn collect_target_paths(prepared: &PreparedBundle, cwd: &Utf8Path) -> Vec<Utf8PathBuf> {
+    prepared
+        .templates()
+        .iter()
+        .map(|template| template.target_path(cwd))
+        .collect()
+}
+
+fn ensure_targets_ready(
+    targets: &[Utf8PathBuf],
+    force: bool,
+    progress: &mut InitProgress,
+) -> Result<()> {
+    for target in targets {
+        if let Err(error) = ensure_target_state(target, force) {
+            progress.fail(progress.write_step_index(), &error.to_string());
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+fn render_agent_bundle(
+    context: &ContextState,
+    cwd: &Utf8Path,
+    prepared: &PreparedBundle,
+    progress: &mut InitProgress,
+    debug: &InitDebugArtifacts,
+) -> Result<()> {
+    let context_bundles = inspect_bundle_contexts(prepared, cwd, progress, debug)?;
+    let mut ai_values_by_template =
+        generate_ai_values(context, cwd, prepared, &context_bundles, progress, debug)?;
+    let mut verification = verify_templates(
+        prepared,
+        &context_bundles,
+        &ai_values_by_template,
+        progress,
+        debug,
+        "initial",
+        true,
+    )?;
+    if verification.repair_jobs.is_empty() {
+        progress.mark_done(progress.repair_step_index(), Some("not needed"));
+        progress.mark_done(progress.reverify_step_index(), Some("not needed"));
+    } else {
+        progress.mark_done(progress.verify_step_index(), Some("needs repair"));
+        repair_ai_fragments(
+            context,
+            cwd,
+            &context_bundles,
+            &mut ai_values_by_template,
+            progress,
+            debug,
+            verification.repair_jobs,
+        )?;
+        verification = verify_templates(
+            prepared,
+            &context_bundles,
+            &ai_values_by_template,
+            progress,
+            debug,
+            "repair",
+            false,
+        )?;
+        progress.mark_done(progress.reverify_step_index(), None);
+    }
+    write_rendered_templates(cwd, prepared, &verification.rendered_by_template, progress)
+}
+
+fn render_static_bundle(
+    cwd: &Utf8Path,
+    prepared: &PreparedBundle,
+    progress: &mut InitProgress,
+) -> Result<()> {
+    let write_step = progress.write_step_index();
+    progress.start(write_step, None);
+    for template in prepared.templates() {
+        let rendered = template.render_final(&BTreeMap::new())?;
+        let target = template.target_path(cwd);
+        if let Err(error) = write_rendered_output(&target, &rendered) {
+            progress.fail(write_step, &error.to_string());
+            return Err(error);
+        }
+    }
+    progress.mark_done(write_step, None);
+    Ok(())
+}
+
+fn inspect_bundle_contexts(
+    prepared: &PreparedBundle,
+    cwd: &Utf8Path,
+    progress: &mut InitProgress,
+    debug: &InitDebugArtifacts,
+) -> Result<BTreeMap<Utf8PathBuf, ContextBundle>> {
+    let inspect_step = progress.inspect_step_index();
+    progress.start(inspect_step, None);
+    let context_bundles = prepared
+        .templates()
+        .iter()
+        .map(|template| {
+            (
+                template.source_path.clone(),
+                template.build_context_bundle(cwd),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    if let Err(error) = debug.write_bundle_context(&context_bundles) {
+        progress.fail(inspect_step, &error.to_string());
+        return Err(error);
+    }
+    progress.mark_done(inspect_step, None);
+    Ok(context_bundles)
+}
+
+fn generate_ai_values(
+    context: &ContextState,
+    cwd: &Utf8Path,
+    prepared: &PreparedBundle,
+    context_bundles: &BTreeMap<Utf8PathBuf, ContextBundle>,
+    progress: &mut InitProgress,
+    debug: &InitDebugArtifacts,
+) -> Result<BTreeMap<Utf8PathBuf, BTreeMap<usize, String>>> {
+    let mut all_fragments = Vec::new();
+    for template in prepared.templates() {
+        let context_bundle = context_bundles
+            .get(&template.source_path)
+            .expect("template context bundle should exist");
+        for fragment in template.ai_fragments() {
+            let request = template.build_ai_fragment_request(
+                cwd,
+                context_bundle,
+                &fragment,
+                &BTreeMap::new(),
+                &[],
+            );
+            all_fragments.push((template, fragment, request));
+        }
+    }
+
+    let generate_step = progress.generate_step_index();
+    let template_count = prepared.templates().len();
+    let fragment_count = all_fragments.len();
+    progress.start(
+        generate_step,
+        Some(&format!(
+            "{fragment_count} fragment{} across {template_count} file{}",
+            if fragment_count == 1 { "" } else { "s" },
+            if template_count == 1 { "" } else { "s" }
+        )),
+    );
+
+    let generated = all_fragments
+        .into_par_iter()
+        .enumerate()
+        .map(|(offset, (template, fragment, request))| {
+            let request = request?;
+            generate_ai_fragment(
+                context,
+                debug,
+                "generate",
+                offset + 1,
+                template,
+                fragment,
+                &request,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let mut ai_values_by_template = BTreeMap::<Utf8PathBuf, BTreeMap<usize, String>>::new();
+    for result in generated {
+        match result {
+            Ok(generated_fragment) => {
+                ai_values_by_template
+                    .entry(generated_fragment.template_source_path)
+                    .or_default()
+                    .insert(
+                        generated_fragment.fragment.placeholder.index,
+                        generated_fragment.replacement,
+                    );
+            }
+            Err(error) => {
+                progress.fail(generate_step, &error.to_string());
+                return Err(error);
+            }
+        }
+    }
+    progress.mark_done(generate_step, None);
+    Ok(ai_values_by_template)
+}
+
+fn verify_templates(
+    prepared: &PreparedBundle,
+    context_bundles: &BTreeMap<Utf8PathBuf, ContextBundle>,
+    ai_values_by_template: &BTreeMap<Utf8PathBuf, BTreeMap<usize, String>>,
+    progress: &mut InitProgress,
+    debug: &InitDebugArtifacts,
+    report_prefix: &str,
+    collect_repairs: bool,
+) -> Result<VerificationOutcome> {
+    let verify_step = if collect_repairs {
+        progress.verify_step_index()
+    } else {
+        progress.reverify_step_index()
+    };
+    progress.start(verify_step, None);
+
+    let mut rendered_by_template = BTreeMap::new();
+    let mut repair_jobs = Vec::new();
+    for template in prepared.templates() {
+        let ai_values = ai_values_by_template
+            .get(&template.source_path)
+            .cloned()
+            .unwrap_or_default();
+        let rendered = template.render_final(&ai_values)?;
+        if template.is_readme() {
+            let context_bundle = context_bundles
+                .get(&template.source_path)
+                .expect("template context bundle should exist");
+            let report = template.verify_readme(&rendered, context_bundle, &ai_values);
+            if let Err(error) = debug.write_verifier_report(
+                &format!("{report_prefix}-{}", template.output_name),
+                &report,
+                &rendered,
+            ) {
+                progress.fail(verify_step, &error.to_string());
+                return Err(error);
+            }
+            if !report.is_valid() {
+                if report.has_non_repairable_findings() || !collect_repairs {
+                    let summary = format_readme_verifier_messages(&report);
+                    progress.fail(verify_step, &summary);
+                    return Err(anyhow!(summary));
+                }
+                repair_jobs.extend(build_repair_jobs(template, &report)?);
+            }
+        } else if rendered.contains("{{") || rendered.contains("}}") {
+            let summary = format!(
+                "{} still contains unresolved template placeholders",
+                template.output_name
+            );
+            progress.fail(verify_step, &summary);
+            return Err(anyhow!(summary));
+        }
+        rendered_by_template.insert(template.source_path.clone(), rendered);
+    }
+
+    if collect_repairs && repair_jobs.is_empty() {
+        progress.mark_done(verify_step, None);
+    }
+
+    Ok(VerificationOutcome {
+        rendered_by_template,
+        repair_jobs,
+    })
+}
+
+fn repair_ai_fragments(
+    context: &ContextState,
+    cwd: &Utf8Path,
+    context_bundles: &BTreeMap<Utf8PathBuf, ContextBundle>,
+    ai_values_by_template: &mut BTreeMap<Utf8PathBuf, BTreeMap<usize, String>>,
+    progress: &mut InitProgress,
+    debug: &InitDebugArtifacts,
+    repair_jobs: Vec<RepairAiFragmentJob>,
+) -> Result<()> {
+    let repair_step = progress.repair_step_index();
+    progress.start(
+        repair_step,
+        Some(&format!(
+            "{} fragment{}",
+            repair_jobs.len(),
+            if repair_jobs.len() == 1 { "" } else { "s" }
+        )),
+    );
+
+    let repaired = repair_jobs
+        .into_par_iter()
+        .enumerate()
+        .map(|(offset, job)| {
+            let context_bundle = context_bundles
+                .get(&job.template.source_path)
+                .expect("template context bundle should exist");
+            let current_ai = ai_values_by_template
+                .get(&job.template.source_path)
+                .cloned()
+                .unwrap_or_default();
+            let request = job.template.build_ai_fragment_request(
+                cwd,
+                context_bundle,
+                &job.fragment,
+                &current_ai,
+                &job.notes,
+            )?;
+            generate_ai_fragment(
+                context,
+                debug,
+                "repair",
+                offset + 1,
+                &job.template,
+                job.fragment,
+                &request,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    for result in repaired {
+        match result {
+            Ok(repaired_fragment) => {
+                ai_values_by_template
+                    .entry(repaired_fragment.template_source_path)
+                    .or_default()
+                    .insert(
+                        repaired_fragment.fragment.placeholder.index,
+                        repaired_fragment.replacement,
+                    );
+            }
+            Err(error) => {
+                progress.fail(repair_step, &error.to_string());
+                return Err(error);
+            }
+        }
+    }
+    progress.mark_done(repair_step, None);
+    Ok(())
+}
+
+fn write_rendered_templates(
+    cwd: &Utf8Path,
+    prepared: &PreparedBundle,
+    rendered_by_template: &BTreeMap<Utf8PathBuf, String>,
+    progress: &mut InitProgress,
+) -> Result<()> {
+    let write_step = progress.write_step_index();
+    progress.start(write_step, None);
+    for template in prepared.templates() {
+        let target = template.target_path(cwd);
+        let rendered = rendered_by_template
+            .get(&template.source_path)
+            .ok_or_else(|| anyhow!("missing rendered output for {}", template.output_name))?;
+        if let Err(error) = write_rendered_output(&target, rendered) {
+            progress.fail(write_step, &error.to_string());
+            return Err(error);
+        }
+    }
+    progress.mark_done(write_step, None);
+    Ok(())
+}
+
+fn generate_ai_fragment(
+    context: &ContextState,
+    debug: &InitDebugArtifacts,
+    stage: &str,
+    ordinal: usize,
+    template: &PreparedTemplate,
+    fragment: AiFragment,
+    request: &AiFragmentRequest,
+) -> Result<GeneratedAiFragment> {
+    let prompt = build_ai_fragment_prompt(request);
+    let label = format!("{}-{}", template.output_name, fragment.label);
+    debug.write_fragment_prompt(stage, ordinal, &label, &prompt)?;
+    let replacement = run_ai_fragment(context, &prompt)?;
+    debug.write_fragment_output(stage, ordinal, &label, &replacement)?;
+    Ok(GeneratedAiFragment {
+        template_source_path: template.source_path.clone(),
+        fragment,
+        replacement,
+    })
+}
+
+fn build_repair_jobs(
+    template: &PreparedTemplate,
+    report: &ReadmeVerificationReport,
+) -> Result<Vec<RepairAiFragmentJob>> {
+    let fragments_by_index = template
+        .ai_fragments()
+        .into_iter()
+        .map(|fragment| (fragment.placeholder.index, fragment))
+        .collect::<BTreeMap<_, _>>();
+    report
+        .repairable_fragment_indexes()
+        .into_iter()
+        .map(|fragment_index| {
+            let fragment = fragments_by_index
+                .get(&fragment_index)
+                .ok_or_else(|| {
+                    anyhow!("missing README fragment metadata for repair index {fragment_index}")
+                })?
+                .clone();
+            let notes = report
+                .findings
+                .iter()
+                .filter(|finding| finding.fragment_index == Some(fragment_index))
+                .map(|finding| finding.message.clone())
+                .collect::<Vec<_>>();
+            Ok(RepairAiFragmentJob {
+                template: template.clone(),
+                fragment,
+                notes,
+            })
+        })
+        .collect()
 }
 
 fn ensure_target_state(target: &Utf8Path, force: bool) -> Result<()> {
@@ -681,7 +804,7 @@ fn ensure_file_can_be_written(path: &Utf8Path, force: bool) -> Result<()> {
     }
 
     let metadata = fs::symlink_metadata(path.as_std_path())
-        .with_context(|| format!("failed to inspect {}", path))?;
+        .with_context(|| format!("failed to inspect {path}"))?;
     if metadata.file_type().is_dir() {
         bail!("{path} is a directory");
     }
@@ -693,7 +816,7 @@ fn ensure_file_can_be_written(path: &Utf8Path, force: bool) -> Result<()> {
 }
 
 fn remove_existing_file(path: &Utf8Path) -> Result<()> {
-    fs::remove_file(path.as_std_path()).with_context(|| format!("failed to remove {}", path))
+    fs::remove_file(path.as_std_path()).with_context(|| format!("failed to remove {path}"))
 }
 
 fn run_ai_fragment(context: &ContextState, prompt: &str) -> Result<String> {
@@ -729,9 +852,9 @@ fn run_ai_fragment(context: &ContextState, prompt: &str) -> Result<String> {
 
 fn write_rendered_output(target_path: &Utf8Path, contents: &str) -> Result<()> {
     if let Some(parent) = target_path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent))?;
+        fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
     }
-    fs::write(target_path, contents).with_context(|| format!("failed to write {}", target_path))
+    fs::write(target_path, contents).with_context(|| format!("failed to write {target_path}"))
 }
 
 fn build_ai_fragment_prompt(request: &AiFragmentRequest) -> String {
@@ -745,7 +868,8 @@ fn build_ai_fragment_prompt(request: &AiFragmentRequest) -> String {
         render_fragment_contract(request),
     );
     if !request.repair_notes.is_empty() {
-        prompt.push_str(&format!(
+        write!(
+            prompt,
             "\n<repair>\n{}\n</repair>\n",
             request
                 .repair_notes
@@ -753,17 +877,21 @@ fn build_ai_fragment_prompt(request: &AiFragmentRequest) -> String {
                 .map(|note| format!("- {note}"))
                 .collect::<Vec<_>>()
                 .join("\n")
-        ));
+        )
+        .expect("writing to String should not fail");
     }
-    prompt.push_str(&format!(
+    write!(
+        prompt,
         "\n<values>\n{}\n</values>\n\n<repo_brief>\n{}\n</repo_brief>\n\n<context_files>\n{}\n</context_files>\n\n<document>\n```md\n{}\n```\n</document>\n",
         render_values(&request.values),
         render_context_summary(&request.context),
         render_context_snippets(&request.context),
         request.document,
-    ));
+    )
+    .expect("writing to String should not fail");
     if let Some(examples) = render_fragment_examples(request) {
-        prompt.push_str(&format!("\n<examples>\n{examples}\n</examples>\n"));
+        write!(prompt, "\n<examples>\n{examples}\n</examples>\n")
+            .expect("writing to String should not fail");
     }
     prompt
 }
@@ -902,8 +1030,7 @@ fn last_agent_output_line(output: &Output) -> Option<String> {
         .lines()
         .chain(stdout.lines())
         .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .next_back()
+        .rfind(|line| !line.is_empty())
         .map(ToOwned::to_owned)
 }
 
@@ -1022,9 +1149,9 @@ impl InitProgress {
             let style = ProgressStyle::with_template(
                 "{spinner:.cyan} {prefix:.bold.dim} {wide_bar:.cyan/blue} {msg}",
             )
-                .expect("progress template should be valid")
-                .progress_chars("█▉▊▋▌▍▎▏ ")
-                .tick_strings(&["⠋", "⠙", "⠸", "⠴", "⠦", "⠇"]);
+            .expect("progress template should be valid")
+            .progress_chars("█▉▊▋▌▍▎▏ ")
+            .tick_strings(&["⠋", "⠙", "⠸", "⠴", "⠦", "⠇"]);
             bar.set_style(style);
             bar.enable_steady_tick(Duration::from_millis(100));
             InitProgressMode::Tty(bar)
@@ -1046,11 +1173,11 @@ impl InitProgress {
         progress
     }
 
-    const fn select_step_index(&self) -> usize {
+    const fn select_step_index() -> usize {
         0
     }
 
-    const fn collect_inputs_step_index(&self) -> usize {
+    const fn collect_inputs_step_index() -> usize {
         1
     }
 
@@ -1130,21 +1257,21 @@ impl InitProgress {
             .iter()
             .find(|step| matches!(step.status, InitStepState::Failed))
         {
-            return self.render_step_message("failed", step);
+            return Self::render_step_message("failed", step);
         }
         if let Some(step) = self
             .steps
             .iter()
             .find(|step| matches!(step.status, InitStepState::Active))
         {
-            return self.render_step_message("working", step);
+            return Self::render_step_message("working", step);
         }
         if let Some(step) = self
             .steps
             .iter()
             .rfind(|step| matches!(step.status, InitStepState::Done))
         {
-            return self.render_step_message("done", step);
+            return Self::render_step_message("done", step);
         }
 
         "waiting".to_owned()
@@ -1163,10 +1290,10 @@ impl InitProgress {
             InitStepState::Done => "done",
             InitStepState::Failed => "failed",
         };
-        match &step.detail {
-            Some(detail) => format!("{verb} {}: {detail}", step.label),
-            None => format!("{verb} {}", step.label),
-        }
+        step.detail.as_ref().map_or_else(
+            || format!("{verb} {}", step.label),
+            |detail| format!("{verb} {}: {detail}", step.label),
+        )
     }
 
     fn completed_steps(&self) -> usize {
@@ -1212,10 +1339,10 @@ impl InitProgress {
             .as_deref()
             .map(Self::truncate_progress_detail)
             .filter(|detail| !detail.is_empty());
-        match detail {
-            Some(detail) => format!("{status} · {} · {detail}", step.label),
-            None => format!("{status} · {}", step.label),
-        }
+        detail.map_or_else(
+            || format!("{status} · {}", step.label),
+            |detail| format!("{status} · {} · {detail}", step.label),
+        )
     }
 
     fn current_step_index(&self) -> Option<usize> {
@@ -1244,11 +1371,11 @@ impl InitProgress {
         truncated
     }
 
-    fn render_step_message(&self, prefix: &str, step: &InitStep) -> String {
-        match &step.detail {
-            Some(detail) => format!("{prefix} {}: {detail}", step.label),
-            None => format!("{prefix} {}", step.label),
-        }
+    fn render_step_message(prefix: &str, step: &InitStep) -> String {
+        step.detail.as_ref().map_or_else(
+            || format!("{prefix} {}", step.label),
+            |detail| format!("{prefix} {}: {detail}", step.label),
+        )
     }
 }
 
@@ -1272,12 +1399,12 @@ impl InitDebugArtifacts {
             .collect::<String>();
         let root = cwd.join(".nanite/init/debug").join(slug);
         fs::create_dir_all(root.as_std_path())
-            .with_context(|| format!("failed to create {}", root))?;
+            .with_context(|| format!("failed to create {root}"))?;
         Ok(Self { root: Some(root) })
     }
 
     fn write_bundle_context(&self, contexts: &BTreeMap<Utf8PathBuf, ContextBundle>) -> Result<()> {
-        let contents = contexts
+        let rendered_contexts = contexts
             .iter()
             .map(|(path, context)| {
                 format!(
@@ -1289,7 +1416,7 @@ impl InitDebugArtifacts {
             })
             .collect::<Vec<_>>()
             .join("\n\n");
-        self.write("context.txt", &contents)
+        self.write("context.txt", &rendered_contexts)
     }
 
     fn write_fragment_prompt(
@@ -1562,7 +1689,7 @@ fn command_jumpto(context: &ContextState, query: Option<&str>) -> Result<Option<
     Ok(Some(Utf8PathBuf::from(path)))
 }
 
-fn jumpto_fzf_args() -> [&'static str; 14] {
+const fn jumpto_fzf_args() -> [&'static str; 14] {
     [
         "--select-1",
         "--exit-0",
@@ -1961,23 +2088,24 @@ impl Prompter for InquirePrompter {
 }
 
 fn inquire_render_config() -> RenderConfig<'static> {
-    let mut config = RenderConfig::default();
-    config.prompt_prefix = Styled::new("•")
-        .with_fg(Color::LightGreen)
-        .with_attr(Attributes::BOLD);
-    config.answered_prompt_prefix = Styled::new("✓")
-        .with_fg(Color::LightGreen)
-        .with_attr(Attributes::BOLD);
-    config.highlighted_option_prefix = Styled::new("›")
-        .with_fg(Color::LightCyan)
-        .with_attr(Attributes::BOLD);
-    config.prompt = StyleSheet::new().with_attr(Attributes::BOLD);
-    config.selected_option = Some(
-        StyleSheet::new()
+    RenderConfig {
+        prompt_prefix: Styled::new("•")
+            .with_fg(Color::LightGreen)
+            .with_attr(Attributes::BOLD),
+        answered_prompt_prefix: Styled::new("✓")
+            .with_fg(Color::LightGreen)
+            .with_attr(Attributes::BOLD),
+        highlighted_option_prefix: Styled::new("›")
             .with_fg(Color::LightCyan)
             .with_attr(Attributes::BOLD),
-    );
-    config
+        prompt: StyleSheet::new().with_attr(Attributes::BOLD),
+        selected_option: Some(
+            StyleSheet::new()
+                .with_fg(Color::LightCyan)
+                .with_attr(Attributes::BOLD),
+        ),
+        ..RenderConfig::default()
+    }
 }
 
 struct IoPrompter<R, W> {
@@ -2034,10 +2162,10 @@ where
             if trimmed.is_empty() {
                 return Ok(0);
             }
-            if let Ok(choice) = trimmed.parse::<usize>() {
-                if (1..=options.len()).contains(&choice) {
-                    return Ok(choice - 1);
-                }
+            if let Ok(choice) = trimmed.parse::<usize>()
+                && (1..=options.len()).contains(&choice)
+            {
+                return Ok(choice - 1);
             }
             if let Some(index) = options.iter().position(|option| option == trimmed) {
                 return Ok(index);
@@ -2128,7 +2256,7 @@ mod tests {
         };
 
         let mut progress = InitProgress::new(&prepared);
-        progress.mark_done(progress.select_step_index(), None);
+        progress.mark_done(InitProgress::select_step_index(), None);
         progress.start(progress.generate_step_index(), None);
         let rendered = progress.rendered();
 
@@ -2165,7 +2293,7 @@ mod tests {
 
     #[test]
     fn jumpto_candidates_align_name_and_repo_columns() {
-        let records = vec![
+        let records = [
             ProjectRecord {
                 name: "nanite".to_owned(),
                 host: "github.com".to_owned(),

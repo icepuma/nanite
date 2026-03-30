@@ -19,8 +19,8 @@ pub use config::{AgentKind, Config};
 pub use prompt::Prompter;
 pub use registry::{ProjectRecord, Registry, SourceKind};
 pub use templates::{
-    AiFragment, AiFragmentRequest, AiPlaceholder, ContextBundle, ContextSnippet, PreparedTemplate,
-    PreparedBundle, ReadmeFragmentRole, ReadmeVerificationFinding, ReadmeVerificationReport,
+    AiFragment, AiFragmentRequest, AiPlaceholder, ContextBundle, ContextSnippet, PreparedBundle,
+    PreparedTemplate, ReadmeFragmentRole, ReadmeVerificationFinding, ReadmeVerificationReport,
     RepoContextFacts, TemplateBundle, TemplateFragment, TemplateMetadata, TemplateRepository,
     TemplateVariant, TextPlaceholder,
 };

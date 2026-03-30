@@ -7,6 +7,146 @@ use std::process::Command as ProcessCommand;
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
+const FAKE_GIT_SCRIPT: &str = r#"#!/bin/sh
+set -eu
+if [ "$1" = "-C" ]; then
+    repo="$2"
+    shift 2
+    if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then
+        if [ -f "$repo/.git_origin" ]; then
+            cat "$repo/.git_origin"
+            exit 0
+        fi
+        exit 2
+    fi
+fi
+echo "unsupported fake git invocation" >&2
+exit 1
+"#;
+
+const FAKE_FZF_SCRIPT: &str = r#"#!/bin/sh
+set -eu
+query=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -q)
+            query="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+input=$(cat)
+if [ -z "$query" ]; then
+    printf '%s\n' "$input" | head -n 1
+    exit 0
+fi
+match=$(printf '%s\n' "$input" | grep -F "$query" | head -n 1 || true)
+if [ -z "$match" ]; then
+    exit 1
+fi
+printf '%s\n' "$match"
+"#;
+
+const FAKE_PROVIDER_SCRIPT: &str = r#"#!/bin/sh
+set -eu
+output=""
+prompt=""
+all_args="$*"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o)
+            output="$2"
+            shift 2
+            ;;
+        *)
+            prompt="$1"
+            shift
+            ;;
+    esac
+done
+log="${NANITE_PROVIDER_LOG:-}"
+if [ -n "$log" ]; then
+    printf '%s %s\n' "$(basename "$0")" "$all_args" >> "$log"
+    printf 'CODEX_HOME=%s\n' "${CODEX_HOME:-}" >> "$log"
+    printf 'CLAUDE_CODE_PLUGIN_SEED_DIR=%s\n' "${CLAUDE_CODE_PLUGIN_SEED_DIR:-}" >> "$log"
+    printf 'PROMPT_START\n%s\nPROMPT_END\n' "$prompt" >> "$log"
+fi
+mode="${NANITE_FAKE_PROVIDER_MODE:-write}"
+repo_name=$(printf '%s\n' "$prompt" | sed -n 's/^- repo_name: //p' | head -n 1)
+if [ -z "$repo_name" ]; then
+    repo_name=$(printf '%s\n' "$prompt" | sed -n 's/^- Repo name: //p' | head -n 1)
+fi
+if [ -z "$repo_name" ]; then repo_name="generated"; fi
+label=$(printf '%s\n' "$prompt" | sed -n 's/^- Label: //p' | head -n 1)
+repairing=0
+if printf '%s\n' "$prompt" | grep -q '<repair>'; then
+    repairing=1
+fi
+emit_payload() {
+    if [ -n "$output" ]; then
+        printf '%b' "$1" > "$output"
+    else
+        printf '%b' "$1"
+    fi
+}
+default_payload() {
+    case "$label" in
+        "Badges")
+            emit_payload ""
+            ;;
+        "Overview")
+            emit_payload "$repo_name keeps repository templates and workspace tooling aligned around a single local workflow.\n\nIt helps generate consistent project files, keep docs predictable, and reduce setup churn across repositories."
+            ;;
+        "Quick Start")
+            emit_payload "- Install or refresh dependencies with the verified setup command for this repository.\n- Start from the repository root and use the verified run path when one exists.\n- Use the generated docs as the baseline for the next local step."
+            ;;
+        "Usage")
+            emit_payload "- Follow the repository's main workflow from the verified commands and directories in the repo brief.\n- Use nanite commands and existing project tooling to keep repeated work consistent.\n- Prefer the documented local path instead of inventing extra setup."
+            ;;
+        "Tests")
+            emit_payload "- No verified test command was found."
+            ;;
+        *)
+            emit_payload "Generated content for $repo_name."
+            ;;
+    esac
+}
+case "$mode" in
+    write)
+        default_payload
+        ;;
+    repair-overview)
+        if [ "$label" = "Overview" ] && [ "$repairing" -eq 0 ]; then
+            emit_payload "$repo_name is a repository toolkit. It keeps files moving. It helps with setup. It also standardizes workflows."
+        else
+            default_payload
+        fi
+        ;;
+    repair-overview-still-bad)
+        if [ "$label" = "Overview" ]; then
+            emit_payload "$repo_name is a repository toolkit. It keeps files moving. It helps with setup. It also standardizes workflows."
+        else
+            default_payload
+        fi
+        ;;
+    fenced)
+        emit_payload '```md
+bad
+```'
+        ;;
+    fail)
+        exit 1
+        ;;
+    *)
+        echo "unsupported fake provider mode: $mode" >&2
+        exit 1
+        ;;
+esac
+"#;
+
 struct TestEnv {
     _tempdir: TempDir,
     config_dir: Utf8PathBuf,
@@ -39,251 +179,10 @@ impl TestEnv {
         let fzf_script = root.join("fake-fzf.sh");
         let codex_script = root.join("codex");
         let claude_script = root.join("claude");
-        write_script(
-            &git_script,
-            r#"#!/bin/sh
-set -eu
-if [ "$1" = "-C" ]; then
-    repo="$2"
-    shift 2
-    if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then
-        if [ -f "$repo/.git_origin" ]; then
-            cat "$repo/.git_origin"
-            exit 0
-        fi
-        exit 2
-    fi
-fi
-echo "unsupported fake git invocation" >&2
-exit 1
-"#,
-        );
-        write_script(
-            &fzf_script,
-            r#"#!/bin/sh
-set -eu
-query=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        -q)
-            query="$2"
-            shift 2
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
-input=$(cat)
-if [ -z "$query" ]; then
-    printf '%s\n' "$input" | head -n 1
-    exit 0
-fi
-match=$(printf '%s\n' "$input" | grep -F "$query" | head -n 1 || true)
-if [ -z "$match" ]; then
-    exit 1
-fi
-printf '%s\n' "$match"
-"#,
-        );
-        write_script(
-            &claude_script,
-            r#"#!/bin/sh
-set -eu
-output=""
-prompt=""
-all_args="$*"
-while [ $# -gt 0 ]; do
-    case "$1" in
-        -o)
-            output="$2"
-            shift 2
-            ;;
-        *)
-            prompt="$1"
-            shift
-            ;;
-    esac
-done
-log="${NANITE_PROVIDER_LOG:-}"
-if [ -n "$log" ]; then
-    printf '%s %s\n' "$(basename "$0")" "$all_args" >> "$log"
-    printf 'CODEX_HOME=%s\n' "${CODEX_HOME:-}" >> "$log"
-    printf 'CLAUDE_CODE_PLUGIN_SEED_DIR=%s\n' "${CLAUDE_CODE_PLUGIN_SEED_DIR:-}" >> "$log"
-    printf 'PROMPT_START\n%s\nPROMPT_END\n' "$prompt" >> "$log"
-fi
-mode="${NANITE_FAKE_PROVIDER_MODE:-write}"
-repo_name=$(printf '%s\n' "$prompt" | sed -n 's/^- repo_name: //p' | head -n 1)
-if [ -z "$repo_name" ]; then
-    repo_name=$(printf '%s\n' "$prompt" | sed -n 's/^- Repo name: //p' | head -n 1)
-fi
-if [ -z "$repo_name" ]; then repo_name="generated"; fi
-label=$(printf '%s\n' "$prompt" | sed -n 's/^- Label: //p' | head -n 1)
-repairing=0
-if printf '%s\n' "$prompt" | grep -q '<repair>'; then
-    repairing=1
-fi
-emit_payload() {
-    if [ -n "$output" ]; then
-        printf '%b' "$1" > "$output"
-    else
-        printf '%b' "$1"
-    fi
-}
-default_payload() {
-    case "$label" in
-        "Badges")
-            emit_payload ""
-            ;;
-        "Overview")
-            emit_payload "$repo_name keeps repository templates and workspace tooling aligned around a single local workflow.\n\nIt helps generate consistent project files, keep docs predictable, and reduce setup churn across repositories."
-            ;;
-        "Quick Start")
-            emit_payload "- Install or refresh dependencies with the verified setup command for this repository.\n- Start from the repository root and use the verified run path when one exists.\n- Use the generated docs as the baseline for the next local step."
-            ;;
-        "Usage")
-            emit_payload "- Follow the repository's main workflow from the verified commands and directories in the repo brief.\n- Use nanite commands and existing project tooling to keep repeated work consistent.\n- Prefer the documented local path instead of inventing extra setup."
-            ;;
-        "Tests")
-            emit_payload "- No verified test command was found."
-            ;;
-        *)
-            emit_payload "Generated content for $repo_name."
-            ;;
-    esac
-}
-case "$mode" in
-    write)
-        default_payload
-        ;;
-    repair-overview)
-        if [ "$label" = "Overview" ] && [ "$repairing" -eq 0 ]; then
-            emit_payload "$repo_name is a repository toolkit. It keeps files moving. It helps with setup. It also standardizes workflows."
-        else
-            default_payload
-        fi
-        ;;
-    repair-overview-still-bad)
-        if [ "$label" = "Overview" ]; then
-            emit_payload "$repo_name is a repository toolkit. It keeps files moving. It helps with setup. It also standardizes workflows."
-        else
-            default_payload
-        fi
-        ;;
-    fenced)
-        emit_payload '```md
-bad
-```'
-        ;;
-    fail)
-        exit 1
-        ;;
-    *)
-        echo "unsupported fake provider mode: $mode" >&2
-        exit 1
-        ;;
-esac
-"#,
-        );
-        write_script(
-            &codex_script,
-            r#"#!/bin/sh
-set -eu
-output=""
-prompt=""
-all_args="$*"
-while [ $# -gt 0 ]; do
-    case "$1" in
-        -o)
-            output="$2"
-            shift 2
-            ;;
-        *)
-            prompt="$1"
-            shift
-            ;;
-    esac
-done
-log="${NANITE_PROVIDER_LOG:-}"
-if [ -n "$log" ]; then
-    printf '%s %s\n' "$(basename "$0")" "$all_args" >> "$log"
-    printf 'CODEX_HOME=%s\n' "${CODEX_HOME:-}" >> "$log"
-    printf 'CLAUDE_CODE_PLUGIN_SEED_DIR=%s\n' "${CLAUDE_CODE_PLUGIN_SEED_DIR:-}" >> "$log"
-    printf 'PROMPT_START\n%s\nPROMPT_END\n' "$prompt" >> "$log"
-fi
-mode="${NANITE_FAKE_PROVIDER_MODE:-write}"
-repo_name=$(printf '%s\n' "$prompt" | sed -n 's/^- repo_name: //p' | head -n 1)
-if [ -z "$repo_name" ]; then
-    repo_name=$(printf '%s\n' "$prompt" | sed -n 's/^- Repo name: //p' | head -n 1)
-fi
-if [ -z "$repo_name" ]; then repo_name="generated"; fi
-label=$(printf '%s\n' "$prompt" | sed -n 's/^- Label: //p' | head -n 1)
-repairing=0
-if printf '%s\n' "$prompt" | grep -q '<repair>'; then
-    repairing=1
-fi
-emit_payload() {
-    if [ -n "$output" ]; then
-        printf '%b' "$1" > "$output"
-    else
-        printf '%b' "$1"
-    fi
-}
-default_payload() {
-    case "$label" in
-        "Badges")
-            emit_payload ""
-            ;;
-        "Overview")
-            emit_payload "$repo_name keeps repository templates and workspace tooling aligned around a single local workflow.\n\nIt helps generate consistent project files, keep docs predictable, and reduce setup churn across repositories."
-            ;;
-        "Quick Start")
-            emit_payload "- Install or refresh dependencies with the verified setup command for this repository.\n- Start from the repository root and use the verified run path when one exists.\n- Use the generated docs as the baseline for the next local step."
-            ;;
-        "Usage")
-            emit_payload "- Follow the repository's main workflow from the verified commands and directories in the repo brief.\n- Use nanite commands and existing project tooling to keep repeated work consistent.\n- Prefer the documented local path instead of inventing extra setup."
-            ;;
-        "Tests")
-            emit_payload "- No verified test command was found."
-            ;;
-        *)
-            emit_payload "Generated content for $repo_name."
-            ;;
-    esac
-}
-case "$mode" in
-    write)
-        default_payload
-        ;;
-    repair-overview)
-        if [ "$label" = "Overview" ] && [ "$repairing" -eq 0 ]; then
-            emit_payload "$repo_name is a repository toolkit. It keeps files moving. It helps with setup. It also standardizes workflows."
-        else
-            default_payload
-        fi
-        ;;
-    repair-overview-still-bad)
-        if [ "$label" = "Overview" ]; then
-            emit_payload "$repo_name is a repository toolkit. It keeps files moving. It helps with setup. It also standardizes workflows."
-        else
-            default_payload
-        fi
-        ;;
-    fenced)
-        emit_payload '```md
-bad
-```'
-        ;;
-    fail)
-        exit 1
-        ;;
-    *)
-        echo "unsupported fake provider mode: $mode" >&2
-        exit 1
-        ;;
-esac
-"#,
-        );
+        write_script(&git_script, FAKE_GIT_SCRIPT);
+        write_script(&fzf_script, FAKE_FZF_SCRIPT);
+        write_script(&claude_script, FAKE_PROVIDER_SCRIPT);
+        write_script(&codex_script, FAKE_PROVIDER_SCRIPT);
 
         Self {
             _tempdir: tempdir,
@@ -376,11 +275,6 @@ fn setup_creates_workspace_and_seeds_content() {
     assert!(
         expected_root
             .join("skills/conventional-commits/agents/openai.yaml")
-            .exists()
-    );
-    assert!(
-        expected_root
-            .join("skills/complete-template/SKILL.md")
             .exists()
     );
     assert!(expected_root.join("repos").exists());
@@ -588,39 +482,29 @@ fn repo_remove_requires_yes_when_not_interactive() {
 fn skills_sync_is_dry_run_by_default_and_applies_when_requested() {
     let env = TestEnv::new();
     env.setup();
-    let codex_complete_template = env.home_dir.join(".codex/skills/complete-template");
     let codex_conventional_commits = env.home_dir.join(".codex/skills/conventional-commits");
 
     env.command()
         .args(["skill", "sync", "codex"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("[create] complete-template"))
         .stdout(predicates::str::contains("sync codex skills (dry run)"))
         .stdout(predicates::str::contains("[create] conventional-commits"))
         .stdout(predicates::str::contains("state missing"))
         .stdout(predicates::str::contains("+ SKILL.md"));
-    assert!(!codex_complete_template.exists());
     assert!(!codex_conventional_commits.exists());
 
     env.command()
         .args(["skill", "sync", "codex", "--apply"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("[create] complete-template"))
         .stdout(predicates::str::contains("sync codex skills"))
         .stdout(predicates::str::contains("[create] conventional-commits"));
-    assert!(codex_complete_template.join("SKILL.md").exists());
     assert!(codex_conventional_commits.join("SKILL.md").exists());
     assert!(
         codex_conventional_commits
             .join("agents/openai.yaml")
             .exists()
-    );
-    assert!(
-        fs::read_to_string(codex_complete_template.join("SKILL.md"))
-            .unwrap()
-            .starts_with("---\n")
     );
     assert!(
         fs::read_to_string(codex_conventional_commits.join("SKILL.md"))
@@ -633,16 +517,10 @@ fn skills_sync_is_dry_run_by_default_and_applies_when_requested() {
         .assert()
         .success()
         .stdout(predicates::str::contains("sync claude skills"))
-        .stdout(predicates::str::contains("[create] complete-template"))
         .stdout(predicates::str::contains("[create] conventional-commits"));
     assert!(
         env.data_dir
             .join("claude/plugins/nanite-skills/skills/conventional-commits/SKILL.md")
-            .exists()
-    );
-    assert!(
-        env.data_dir
-            .join("claude/plugins/nanite-skills/skills/complete-template/SKILL.md")
             .exists()
     );
 }
