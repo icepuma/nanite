@@ -14,22 +14,22 @@ use time::OffsetDateTime;
 
 use crate::remote::RemoteSpec;
 
-pub fn remove_existing_path(path: &Utf8Path) -> Result<()> {
+fn remove_existing_path(path: &Utf8Path) -> Result<()> {
     let metadata =
-        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {}", path))?;
+        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {path}"))?;
     if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
-        fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", path))?;
+        fs::remove_dir_all(path).with_context(|| format!("failed to remove {path}"))?;
     } else {
-        fs::remove_file(path).with_context(|| format!("failed to remove {}", path))?;
+        fs::remove_file(path).with_context(|| format!("failed to remove {path}"))?;
     }
     Ok(())
 }
 
-pub fn destination_for(workspace_root: &Utf8Path, spec: &RemoteSpec) -> Utf8PathBuf {
+fn destination_for(workspace_root: &Utf8Path, spec: &RemoteSpec) -> Utf8PathBuf {
     workspace_root.join(&spec.host).join(&spec.repo_path)
 }
 
-pub fn record_from_spec(
+fn record_from_spec(
     spec: RemoteSpec,
     destination: Utf8PathBuf,
     origin: String,

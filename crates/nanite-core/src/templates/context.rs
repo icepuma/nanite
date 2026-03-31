@@ -1,6 +1,5 @@
 use crate::templates::model::{ContextBundle, ContextSnippet, RepoContextFacts};
 use serde_json::Value as JsonValue;
-use std::fmt::Write as _;
 use std::fs;
 
 const MAX_CONTEXT_SNIPPET_BYTES: usize = 4 * 1024;
@@ -287,7 +286,9 @@ fn collect_workspace_inventory(cwd: &camino::Utf8Path) -> Option<String> {
 
         let mut content = format!("[{label}]\n");
         for name in names {
-            writeln!(content, "- {name}").expect("writing to String should not fail");
+            content.push_str("- ");
+            content.push_str(&name);
+            content.push('\n');
         }
         sections.push(content.trim_end().to_owned());
     }

@@ -4,6 +4,12 @@ use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::fs;
 
+/// Removes a repository from the workspace and prunes empty parent directories.
+///
+/// # Errors
+///
+/// Returns an error when the target is invalid, points at the workspace root,
+/// does not exist, or cannot be removed safely.
 pub fn remove_repo(workspace_root: &Utf8Path, target: &str) -> Result<Utf8PathBuf> {
     let destination = resolve_remove_destination(workspace_root, target)?;
     if !destination.exists() {
@@ -18,6 +24,12 @@ pub fn remove_repo(workspace_root: &Utf8Path, target: &str) -> Result<Utf8PathBu
     Ok(destination)
 }
 
+/// Resolves a repo removal target to its absolute workspace path.
+///
+/// # Errors
+///
+/// Returns an error when the target string is empty, invalid, or resolves
+/// outside the workspace.
 pub fn resolve_repo_remove_target(workspace_root: &Utf8Path, target: &str) -> Result<Utf8PathBuf> {
     resolve_remove_destination(workspace_root, target)
 }
@@ -76,7 +88,7 @@ fn prune_empty_repo_parents(workspace_root: &Utf8Path, destination: &Utf8Path) -
         if !directory_is_empty(parent)? {
             break;
         }
-        fs::remove_dir(parent).with_context(|| format!("failed to remove empty {}", parent))?;
+        fs::remove_dir(parent).with_context(|| format!("failed to remove empty {parent}"))?;
         current = parent.parent();
     }
     Ok(())
@@ -84,6 +96,6 @@ fn prune_empty_repo_parents(workspace_root: &Utf8Path, destination: &Utf8Path) -
 
 fn directory_is_empty(path: &Utf8Path) -> Result<bool> {
     let mut entries =
-        fs::read_dir(path).with_context(|| format!("failed to read directory {}", path))?;
+        fs::read_dir(path).with_context(|| format!("failed to read directory {path}"))?;
     Ok(entries.next().is_none())
 }

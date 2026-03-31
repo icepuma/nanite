@@ -8,6 +8,12 @@ use std::collections::VecDeque;
 use std::fs;
 use std::process::Command;
 
+/// Reads the configured Git author name for the repository containing `cwd`.
+///
+/// # Errors
+///
+/// Returns an error when the repository can be discovered but its Git config
+/// cannot be read.
 pub fn configured_author_name(cwd: &Utf8Path) -> Result<Option<String>> {
     let Ok(repo) = gix::discover(cwd.as_std_path()) else {
         return Ok(None);
@@ -23,6 +29,12 @@ pub fn configured_author_name(cwd: &Utf8Path) -> Result<Option<String>> {
     Ok(author)
 }
 
+/// Scans the workspace tree for git repositories and resolves their origins.
+///
+/// # Errors
+///
+/// Returns an error when the workspace cannot be traversed or repository origin
+/// metadata cannot be resolved.
 pub fn scan_workspace(git_binary: &str, workspace_root: &Utf8Path) -> Result<Vec<ProjectRecord>> {
     let repositories = discover_git_repositories(workspace_root)?;
     repositories
@@ -45,6 +57,11 @@ pub fn scan_workspace(git_binary: &str, workspace_root: &Utf8Path) -> Result<Vec
         .collect()
 }
 
+/// Reads the `origin` remote for a repository by invoking the configured git binary.
+///
+/// # Errors
+///
+/// Returns an error when the git process cannot be spawned.
 pub fn git_origin(git_binary: &str, repo_path: &Utf8Path) -> Result<Option<String>> {
     let output = Command::new(git_binary)
         .args(["-C", repo_path.as_str(), "remote", "get-url", "origin"])
@@ -61,7 +78,6 @@ pub fn git_origin(git_binary: &str, repo_path: &Utf8Path) -> Result<Option<Strin
 
     Ok(Some(remote))
 }
-
 fn discover_git_repositories(workspace_root: &Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     let mut queue = VecDeque::from([workspace_root.to_owned()]);
     let mut repositories = Vec::new();
@@ -73,7 +89,7 @@ fn discover_git_repositories(workspace_root: &Utf8Path) -> Result<Vec<Utf8PathBu
         }
 
         for entry in
-            fs::read_dir(&directory).with_context(|| format!("failed to read {}", directory))?
+            fs::read_dir(&directory).with_context(|| format!("failed to read {directory}"))?
         {
             let entry = entry?;
             let file_type = entry.file_type()?;
@@ -93,7 +109,7 @@ fn discover_git_repositories(workspace_root: &Utf8Path) -> Result<Vec<Utf8PathBu
     Ok(repositories)
 }
 
-pub fn relative_spec(workspace_root: &Utf8Path, repo_path: &Utf8Path) -> Result<RemoteSpec> {
+pub(super) fn relative_spec(workspace_root: &Utf8Path, repo_path: &Utf8Path) -> Result<RemoteSpec> {
     let relative = repo_path
         .strip_prefix(workspace_root)
         .map_err(|_| anyhow!("{repo_path} is not inside {workspace_root}"))?;

@@ -43,5 +43,5 @@ where
     let mut command = build_cli();
     let mut buffer = Vec::new();
     generate(shell, &mut command, "nanite", &mut buffer);
-    String::from_utf8(buffer).expect("clap completion output is valid UTF-8")
+    String::from_utf8_lossy(&buffer).into_owned()
 }

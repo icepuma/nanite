@@ -7,6 +7,12 @@ pub struct FrontmatterDocument<T> {
     pub body: String,
 }
 
+/// Parses a YAML frontmatter document separated from the body by `---` markers.
+///
+/// # Errors
+///
+/// Returns an error when the frontmatter markers are missing or when the YAML
+/// metadata cannot be deserialized into `T`.
 pub fn parse_frontmatter<T>(source: &str) -> Result<FrontmatterDocument<T>>
 where
     T: DeserializeOwned,

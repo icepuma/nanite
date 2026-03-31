@@ -4,18 +4,30 @@ use std::ffi::OsString;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppPaths {
-    config_dir: Utf8PathBuf,
-    codex_home_dir: Utf8PathBuf,
-    data_dir: Utf8PathBuf,
-    home_dir: Utf8PathBuf,
-    state_dir: Utf8PathBuf,
+    config: Utf8PathBuf,
+    codex_home: Utf8PathBuf,
+    data: Utf8PathBuf,
+    home: Utf8PathBuf,
+    state: Utf8PathBuf,
 }
 
 impl AppPaths {
+    /// Discovers Nanite's filesystem locations from the current process environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when required environment variables are missing or contain
+    /// non-UTF-8 data.
     pub fn discover() -> Result<Self> {
         Self::from_env(|key| std::env::var_os(key))
     }
 
+    /// Resolves Nanite's filesystem locations from an environment lookup function.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `HOME` is unavailable or when any relevant path
+    /// variable contains non-UTF-8 data.
     pub fn from_env<F>(mut lookup: F) -> Result<Self>
     where
         F: FnMut(&str) -> Option<OsString>,
@@ -27,25 +39,25 @@ impl AppPaths {
             "HOME",
         )?;
 
-        let config_dir = resolve_dir(
+        let config = resolve_dir(
             &mut lookup,
             "NANITE_CONFIG_DIR",
             "XDG_CONFIG_HOME",
             &home,
             ".config/nanite",
         )?;
-        let codex_home_dir = lookup("CODEX_HOME")
+        let codex_home = lookup("CODEX_HOME")
             .map(|value| utf8_path_buf(value, "CODEX_HOME"))
             .transpose()?
             .unwrap_or_else(|| Utf8PathBuf::from(&home).join(".codex"));
-        let data_dir = resolve_dir(
+        let data = resolve_dir(
             &mut lookup,
             "NANITE_DATA_DIR",
             "XDG_DATA_HOME",
             &home,
             ".local/share/nanite",
         )?;
-        let state_dir = resolve_dir(
+        let state = resolve_dir(
             &mut lookup,
             "NANITE_STATE_DIR",
             "XDG_STATE_HOME",
@@ -54,52 +66,62 @@ impl AppPaths {
         )?;
 
         Ok(Self {
-            config_dir,
-            codex_home_dir,
-            data_dir,
-            home_dir: Utf8PathBuf::from(home),
-            state_dir,
+            config,
+            codex_home,
+            data,
+            home: Utf8PathBuf::from(home),
+            state,
         })
     }
 
-    pub fn config_dir(&self) -> &Utf8PathBuf {
-        &self.config_dir
+    #[must_use]
+    pub const fn config_dir(&self) -> &Utf8PathBuf {
+        &self.config
     }
 
-    pub fn data_dir(&self) -> &Utf8PathBuf {
-        &self.data_dir
+    #[must_use]
+    pub const fn data_dir(&self) -> &Utf8PathBuf {
+        &self.data
     }
 
-    pub fn codex_home_root(&self) -> &Utf8PathBuf {
-        &self.codex_home_dir
+    #[must_use]
+    pub const fn codex_home_root(&self) -> &Utf8PathBuf {
+        &self.codex_home
     }
 
+    #[must_use]
     pub fn codex_skills_root(&self) -> Utf8PathBuf {
-        self.codex_home_dir.join("skills")
+        self.codex_home.join("skills")
     }
 
-    pub fn home_dir(&self) -> &Utf8PathBuf {
-        &self.home_dir
+    #[must_use]
+    pub const fn home_dir(&self) -> &Utf8PathBuf {
+        &self.home
     }
 
-    pub fn state_dir(&self) -> &Utf8PathBuf {
-        &self.state_dir
+    #[must_use]
+    pub const fn state_dir(&self) -> &Utf8PathBuf {
+        &self.state
     }
 
+    #[must_use]
     pub fn config_file(&self) -> Utf8PathBuf {
-        self.config_dir.join("config.toml")
+        self.config.join("config.toml")
     }
 
+    #[must_use]
     pub fn registry_file(&self) -> Utf8PathBuf {
-        self.state_dir.join("registry.json")
+        self.state.join("registry.json")
     }
 
+    #[must_use]
     pub fn codex_render_root(&self) -> Utf8PathBuf {
-        self.data_dir.join("rendered/codex")
+        self.data.join("rendered/codex")
     }
 
+    #[must_use]
     pub fn claude_plugin_seed_root(&self) -> Utf8PathBuf {
-        self.data_dir.join("claude/plugins")
+        self.data.join("claude/plugins")
     }
 }
 

@@ -9,6 +9,7 @@ pub struct WorkspacePaths {
 }
 
 impl WorkspacePaths {
+    #[must_use]
     pub fn new(root: Utf8PathBuf) -> Self {
         Self {
             repos_root: root.join("repos"),
@@ -18,18 +19,22 @@ impl WorkspacePaths {
         }
     }
 
+    #[must_use]
     pub fn root(&self) -> &Utf8Path {
         &self.root
     }
 
+    #[must_use]
     pub fn repos_root(&self) -> &Utf8Path {
         &self.repos_root
     }
 
+    #[must_use]
     pub fn skills_root(&self) -> &Utf8Path {
         &self.skills_root
     }
 
+    #[must_use]
     pub fn templates_root(&self) -> &Utf8Path {
         &self.templates_root
     }

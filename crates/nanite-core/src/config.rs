@@ -23,11 +23,23 @@ struct ConfigFile {
 }
 
 impl Config {
+    /// Loads the configured Nanite workspace settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the config file cannot be read, cannot be parsed, or
+    /// does not contain a supported agent configuration.
     pub fn load(paths: &AppPaths) -> Result<Self> {
         Self::load_optional(paths)?
             .ok_or_else(|| anyhow::anyhow!("run 'nanite setup <path>' first"))
     }
 
+    /// Loads the config file if it exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the config file exists but cannot be read, parsed,
+    /// or converted into a valid `Config`.
     pub fn load_optional(paths: &AppPaths) -> Result<Option<Self>> {
         let config_path = paths.config_file();
         if !config_path.exists() {
@@ -42,17 +54,24 @@ impl Config {
         Ok(Some(Self::from_file(&file, paths)?))
     }
 
-    pub fn default_for(paths: &AppPaths) -> Result<Self> {
-        Ok(Self {
+    #[must_use]
+    pub fn default_for(paths: &AppPaths) -> Self {
+        Self {
             workspace_root: paths.home_dir().join("development"),
             agent: AgentKind::Codex,
-        })
+        }
     }
 
+    /// Persists the current configuration to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the config directory cannot be created, the config
+    /// cannot be serialized, or the file cannot be written.
     pub fn save(&self, paths: &AppPaths) -> Result<()> {
         let config_path = paths.config_file();
         if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent))?;
+            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
         } else {
             bail!("failed to determine config directory for {config_path}");
         }
@@ -62,6 +81,7 @@ impl Config {
         Ok(())
     }
 
+    #[must_use]
     pub fn workspace_paths(&self) -> WorkspacePaths {
         WorkspacePaths::new(self.workspace_root.clone())
     }
@@ -82,6 +102,7 @@ impl Config {
 }
 
 impl AgentKind {
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Codex => "codex",
@@ -128,7 +149,7 @@ mod tests {
         let env = HashMap::from([("HOME".to_owned(), "/tmp/home".to_owned())]);
         let paths = AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap();
 
-        let config = Config::default_for(&paths).unwrap();
+        let config = Config::default_for(&paths);
 
         assert_eq!(config.workspace_root.as_str(), "/tmp/home/development");
         assert_eq!(config.agent, AgentKind::Codex);

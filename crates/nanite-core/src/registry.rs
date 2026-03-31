@@ -32,22 +32,34 @@ pub struct Registry {
 }
 
 impl Registry {
+    /// Loads the project registry from disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the registry file exists but cannot be read or
+    /// parsed as JSON.
     pub fn load(path: &Utf8Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
 
-        let raw = fs::read_to_string(path).with_context(|| format!("failed to read {}", path))?;
-        serde_json::from_str(&raw).with_context(|| format!("failed to parse {}", path))
+        let raw = fs::read_to_string(path).with_context(|| format!("failed to read {path}"))?;
+        serde_json::from_str(&raw).with_context(|| format!("failed to parse {path}"))
     }
 
+    /// Saves the project registry to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the parent directory cannot be created, the
+    /// registry cannot be serialized, or the destination file cannot be written.
     pub fn save(&self, path: &Utf8Path) -> Result<()> {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent))?;
+            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
         }
 
         let raw = serde_json::to_string_pretty(self)?;
-        fs::write(path, raw).with_context(|| format!("failed to write {}", path))?;
+        fs::write(path, raw).with_context(|| format!("failed to write {path}"))?;
         Ok(())
     }
 
@@ -59,6 +71,7 @@ impl Registry {
         self.projects.remove(path.as_str())
     }
 
+    #[must_use]
     pub fn entries(&self) -> Vec<&ProjectRecord> {
         self.projects.values().collect()
     }

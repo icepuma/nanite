@@ -30,6 +30,7 @@ pub enum ReadmeFragmentRole {
 }
 
 impl ReadmeFragmentRole {
+    #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
             Self::Badges => "Badges",

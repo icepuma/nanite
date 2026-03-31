@@ -10,15 +10,20 @@ use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::fs;
 
+/// Syncs rendered Codex skills into the render tree and install tree.
+///
+/// # Errors
+///
+/// Returns an error when skill trees cannot be rendered, inspected, created, or
+/// written to disk.
 pub fn sync_codex(
     skills: &[CanonicalSkill],
     render_root: &Utf8Path,
     install_root: &Utf8Path,
     apply: bool,
 ) -> Result<SyncReport> {
-    fs::create_dir_all(render_root).with_context(|| format!("failed to create {}", render_root))?;
-    fs::create_dir_all(install_root)
-        .with_context(|| format!("failed to create {}", install_root))?;
+    fs::create_dir_all(render_root).with_context(|| format!("failed to create {render_root}"))?;
+    fs::create_dir_all(install_root).with_context(|| format!("failed to create {install_root}"))?;
 
     let mut items = Vec::new();
     for skill in skills {
@@ -42,6 +47,12 @@ pub fn sync_codex(
     Ok(SyncReport { items })
 }
 
+/// Syncs rendered Claude plugin skills into each configured plugin seed directory.
+///
+/// # Errors
+///
+/// Returns an error when target directories cannot be inspected, created, or
+/// written to disk.
 pub fn sync_claude(
     skills: &[CanonicalSkill],
     plugin_seed_dirs: &[Utf8PathBuf],
@@ -86,7 +97,7 @@ fn inspect_codex_target(
         Ok(metadata) => {
             if metadata.file_type().is_symlink() {
                 let actual_target = fs::read_link(install_path.as_std_path())
-                    .with_context(|| format!("failed to read {}", install_path))?;
+                    .with_context(|| format!("failed to read {install_path}"))?;
                 if actual_target != render_path.as_std_path() {
                     reasons.push(SyncReason::WrongSymlink {
                         expected: render_path.as_str().to_owned(),
@@ -107,7 +118,7 @@ fn inspect_codex_target(
             });
         }
         Err(error) => {
-            return Err(error).with_context(|| format!("failed to inspect {}", install_path));
+            return Err(error).with_context(|| format!("failed to inspect {install_path}"));
         }
     }
 
@@ -186,7 +197,7 @@ fn write_claude_plugin(
     let skill_dir = plugin_root.join("skills").join(&skill.slug);
 
     fs::create_dir_all(&manifest_dir)
-        .with_context(|| format!("failed to create {}", manifest_dir))?;
+        .with_context(|| format!("failed to create {manifest_dir}"))?;
     fs::create_dir_all(plugin_root.join("skills"))
         .with_context(|| format!("failed to create {}", plugin_root.join("skills")))?;
     fs::write(

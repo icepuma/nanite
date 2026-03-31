@@ -1,11 +1,3 @@
-#![allow(
-    clippy::missing_const_for_fn,
-    clippy::missing_errors_doc,
-    clippy::must_use_candidate,
-    clippy::struct_field_names,
-    clippy::uninlined_format_args
-)]
-
 pub mod app_paths;
 pub mod config;
 pub mod frontmatter;

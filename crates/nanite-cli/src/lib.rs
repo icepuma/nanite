@@ -1,5 +1,3 @@
-#![allow(clippy::missing_errors_doc)]
-
 mod cli;
 mod context;
 mod init;
@@ -19,6 +17,12 @@ use nanite_core::AppPaths;
 
 pub use cli::build_cli;
 
+/// Runs the Nanite CLI and returns the process exit code.
+///
+/// # Errors
+///
+/// Returns an error when application paths, configuration, or a selected
+/// subcommand cannot be resolved or executed successfully.
 pub fn run() -> Result<i32> {
     run_with(cli::Cli::parse())
 }

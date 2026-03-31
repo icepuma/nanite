@@ -9,6 +9,7 @@ pub struct RemoteSpec {
 }
 
 impl RemoteSpec {
+    #[must_use]
     pub fn name(&self) -> &str {
         self.repo_path
             .rsplit('/')
@@ -17,6 +18,12 @@ impl RemoteSpec {
     }
 }
 
+/// Parses a git remote into a normalized host and repository path.
+///
+/// # Errors
+///
+/// Returns an error when the remote is empty, uses an unsupported format, or
+/// contains an invalid repository path.
 pub fn parse_remote(remote: &str) -> Result<RemoteSpec> {
     let remote = remote.trim();
     if remote.is_empty() {
@@ -51,13 +58,13 @@ fn parse_scp(remote: &str) -> Result<RemoteSpec> {
 
     let host = captures
         .name("host")
-        .expect("regex always captures host")
+        .ok_or_else(|| anyhow!("unsupported git remote format: {remote}"))?
         .as_str()
         .to_owned();
     let repo_path = normalize_repo_path(
         captures
             .name("path")
-            .expect("regex always captures path")
+            .ok_or_else(|| anyhow!("unsupported git remote format: {remote}"))?
             .as_str(),
     )?;
 

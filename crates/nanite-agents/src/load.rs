@@ -5,9 +5,15 @@ use nanite_core::frontmatter::parse_frontmatter;
 use std::collections::BTreeMap;
 use std::fs;
 
+/// Loads all canonical skills from the given skills root.
+///
+/// # Errors
+///
+/// Returns an error when the skill directories cannot be read, contain
+/// non-UTF-8 paths, or include invalid `SKILL.md` frontmatter.
 pub fn load_skills(skills_root: &Utf8Path) -> Result<Vec<CanonicalSkill>> {
     let entries =
-        fs::read_dir(skills_root).with_context(|| format!("failed to read {}", skills_root))?;
+        fs::read_dir(skills_root).with_context(|| format!("failed to read {skills_root}"))?;
     let mut skills = Vec::new();
 
     for entry in entries {
@@ -24,9 +30,9 @@ pub fn load_skills(skills_root: &Utf8Path) -> Result<Vec<CanonicalSkill>> {
             .to_owned();
         let skill_file = skill_dir.join("SKILL.md");
         let raw = fs::read_to_string(skill_file.as_std_path())
-            .with_context(|| format!("failed to read {}", skill_file))?;
+            .with_context(|| format!("failed to read {skill_file}"))?;
         let document = parse_frontmatter::<SkillMetadata>(&raw)
-            .with_context(|| format!("failed to parse {}", skill_file))?;
+            .with_context(|| format!("failed to parse {skill_file}"))?;
 
         let mut resources = BTreeMap::new();
         collect_resources(&skill_dir, Utf8Path::new(""), &mut resources)?;
@@ -56,7 +62,7 @@ fn collect_resources(
     };
 
     for entry in
-        fs::read_dir(&current_root).with_context(|| format!("failed to read {}", current_root))?
+        fs::read_dir(&current_root).with_context(|| format!("failed to read {current_root}"))?
     {
         let entry = entry?;
         let file_name = entry
@@ -81,7 +87,7 @@ fn collect_resources(
 
         resources.insert(
             relative_path,
-            fs::read(&path).with_context(|| format!("failed to read {}", path))?,
+            fs::read(&path).with_context(|| format!("failed to read {path}"))?,
         );
     }
 

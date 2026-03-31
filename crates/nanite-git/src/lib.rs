@@ -1,10 +1,3 @@
-#![allow(
-    clippy::missing_errors_doc,
-    clippy::missing_panics_doc,
-    clippy::must_use_candidate,
-    clippy::uninlined_format_args
-)]
-
 mod copy;
 mod remote;
 mod workspace;

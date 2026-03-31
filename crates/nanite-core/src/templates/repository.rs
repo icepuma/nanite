@@ -12,13 +12,18 @@ use crate::templates::verify::verify_readme;
 use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write as _;
 use std::fs;
 
 impl TemplateRepository {
+    /// Loads all template bundles from the configured templates directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when template directories cannot be read, contain
+    /// non-UTF-8 paths, or include invalid template frontmatter or placeholders.
     pub fn load(templates_root: &Utf8Path) -> Result<Self> {
         let entries = fs::read_dir(templates_root)
-            .with_context(|| format!("failed to read {}", templates_root))?;
+            .with_context(|| format!("failed to read {templates_root}"))?;
         let mut bundles = Vec::new();
 
         for entry in entries {
@@ -31,10 +36,10 @@ impl TemplateRepository {
                 .map_err(|path| anyhow!("non-UTF-8 template path: {}", path.display()))?;
             let bundle_name = bundle_path
                 .file_name()
-                .ok_or_else(|| anyhow!("failed to determine bundle name for {}", bundle_path))?
+                .ok_or_else(|| anyhow!("failed to determine bundle name for {bundle_path}"))?
                 .to_owned();
             let bundle_entries = fs::read_dir(bundle_path.as_std_path())
-                .with_context(|| format!("failed to read {}", bundle_path))?;
+                .with_context(|| format!("failed to read {bundle_path}"))?;
             let mut templates = Vec::new();
 
             for template_entry in bundle_entries {
@@ -46,9 +51,9 @@ impl TemplateRepository {
                 let source_path = Utf8PathBuf::from_path_buf(template_entry.path())
                     .map_err(|path| anyhow!("non-UTF-8 template path: {}", path.display()))?;
                 let raw = fs::read_to_string(source_path.as_std_path())
-                    .with_context(|| format!("failed to read {}", source_path))?;
+                    .with_context(|| format!("failed to read {source_path}"))?;
                 let document = parse_frontmatter::<TemplateMetadata>(&raw)
-                    .with_context(|| format!("failed to parse {}", source_path))?;
+                    .with_context(|| format!("failed to parse {source_path}"))?;
                 let fragments = parse_template_fragments(&document.body, &source_path)?;
 
                 templates.push(TemplateVariant {
@@ -80,6 +85,7 @@ impl TemplateRepository {
         Ok(Self { bundles })
     }
 
+    #[must_use]
     pub fn output_names(&self) -> Vec<String> {
         self.bundles
             .iter()
@@ -101,6 +107,11 @@ impl TemplateRepository {
             .collect()
     }
 
+    /// Looks up a template bundle by its interactive selection label.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the label does not match any loaded bundle.
     pub fn bundle_by_selection_label(&self, label: &str) -> Result<&TemplateBundle> {
         self.bundles
             .iter()
@@ -110,10 +121,20 @@ impl TemplateRepository {
 }
 
 impl TemplateBundle {
+    /// Prepares all templates in the bundle by resolving text placeholders.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the prompter fails to provide a placeholder value.
     pub fn prepare(&self, prompter: &mut impl Prompter) -> Result<PreparedBundle> {
         self.prepare_with_values(BTreeMap::new(), prompter)
     }
 
+    /// Prepares the bundle with built-in values derived from `cwd`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the prompter fails to provide a placeholder value.
     pub fn prepare_for_path(
         &self,
         cwd: &Utf8Path,
@@ -122,6 +143,11 @@ impl TemplateBundle {
         self.prepare_with_seed_values(template_builtin_values(cwd), prompter)
     }
 
+    /// Prepares the bundle using caller-provided seed values before prompting.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the prompter fails to provide a placeholder value.
     pub fn prepare_with_seed_values(
         &self,
         seed_values: BTreeMap<String, String>,
@@ -167,6 +193,7 @@ impl TemplateBundle {
         })
     }
 
+    #[must_use]
     pub fn selection_label(&self) -> String {
         let files = self
             .templates
@@ -194,6 +221,7 @@ fn extract_single_prepared_template(bundle: PreparedBundle) -> Result<PreparedTe
 }
 
 impl TemplateVariant {
+    #[must_use]
     fn selection_file_label(&self) -> String {
         let source_name = self
             .source_path
@@ -207,6 +235,11 @@ impl TemplateVariant {
         }
     }
 
+    /// Prepares a single template by resolving text placeholders.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the prompter fails to provide a placeholder value.
     pub fn prepare(&self, prompter: &mut impl Prompter) -> Result<PreparedTemplate> {
         TemplateBundle {
             name: "single".to_owned(),
@@ -217,6 +250,11 @@ impl TemplateVariant {
         .and_then(extract_single_prepared_template)
     }
 
+    /// Prepares a single template with built-in values derived from `cwd`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the prompter fails to provide a placeholder value.
     pub fn prepare_for_path(
         &self,
         cwd: &Utf8Path,
@@ -231,6 +269,11 @@ impl TemplateVariant {
         .and_then(extract_single_prepared_template)
     }
 
+    /// Prepares a single template using caller-provided seed values.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the prompter fails to provide a placeholder value.
     pub fn prepare_with_seed_values(
         &self,
         seed_values: BTreeMap<String, String>,
@@ -259,30 +302,36 @@ impl TemplateVariant {
 }
 
 impl PreparedBundle {
+    #[must_use]
     pub fn templates(&self) -> &[PreparedTemplate] {
         &self.templates
     }
 
+    #[must_use]
     pub fn requires_agent(&self) -> bool {
         self.templates.iter().any(PreparedTemplate::requires_agent)
     }
 
-    pub fn text_values(&self) -> &BTreeMap<String, String> {
+    #[must_use]
+    pub const fn text_values(&self) -> &BTreeMap<String, String> {
         &self.values
     }
 }
 
 impl PreparedTemplate {
+    #[must_use]
     pub fn target_path(&self, cwd: &Utf8Path) -> Utf8PathBuf {
         cwd.join(&self.output_name)
     }
 
+    #[must_use]
     pub fn requires_agent(&self) -> bool {
         self.fragments
             .iter()
             .any(|fragment| matches!(fragment, TemplateFragment::Ai(_)))
     }
 
+    #[must_use]
     pub fn ai_placeholders(&self) -> Vec<AiPlaceholder> {
         self.ai_fragments()
             .into_iter()
@@ -290,6 +339,7 @@ impl PreparedTemplate {
             .collect()
     }
 
+    #[must_use]
     pub fn ai_fragments(&self) -> Vec<AiFragment> {
         let readme_roles = if self.is_readme() {
             Some([
@@ -345,6 +395,12 @@ impl PreparedTemplate {
         fragments
     }
 
+    /// Renders the final file with all AI fragments resolved.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a required AI fragment value is missing or when a
+    /// template expression fails to render.
     pub fn render_final(&self, ai_values: &BTreeMap<usize, String>) -> Result<String> {
         let mut rendered = String::new();
 
@@ -373,6 +429,13 @@ impl PreparedTemplate {
         Ok(rendered)
     }
 
+    /// Writes the rendered file to `cwd`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when AI fragments are still unresolved, the target file
+    /// already exists without `force`, rendering fails, or the file cannot be
+    /// written.
     pub fn write(&self, cwd: &Utf8Path, force: bool) -> Result<Utf8PathBuf> {
         if self.requires_agent() {
             bail!(
@@ -387,14 +450,21 @@ impl PreparedTemplate {
         }
 
         let rendered = self.render_final(&BTreeMap::new())?;
-        fs::write(&target, rendered).with_context(|| format!("failed to write {}", target))?;
+        fs::write(&target, rendered).with_context(|| format!("failed to write {target}"))?;
         Ok(target)
     }
 
+    #[must_use]
     pub fn build_context_bundle(&self, cwd: &Utf8Path) -> ContextBundle {
         build_context_bundle(cwd, &self.values)
     }
 
+    /// Builds the prompt payload for a specific AI fragment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the active document cannot be rendered with the
+    /// currently resolved template values.
     pub fn build_ai_fragment_request(
         &self,
         cwd: &Utf8Path,
@@ -419,10 +489,12 @@ impl PreparedTemplate {
         })
     }
 
+    #[must_use]
     pub fn is_readme(&self) -> bool {
         self.output_name == "README.md"
     }
 
+    #[must_use]
     pub fn verify_readme(
         &self,
         rendered: &str,
@@ -454,8 +526,9 @@ impl PreparedTemplate {
                     } else if let Some(value) = resolved_ai.get(&placeholder.index) {
                         rendered.push_str(value);
                     } else {
-                        write!(rendered, "{{{{ai:{}}}}}", placeholder.prompt)
-                            .expect("writing to String should not fail");
+                        rendered.push_str("{{ai:");
+                        rendered.push_str(&placeholder.prompt);
+                        rendered.push_str("}}");
                     }
                 }
             }

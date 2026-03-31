@@ -251,7 +251,7 @@ fn generate_ai_values(
     for template in prepared.templates() {
         let context_bundle = context_bundles
             .get(&template.source_path)
-            .expect("template context bundle should exist");
+            .ok_or_else(|| anyhow!("missing context bundle for {}", template.source_path))?;
         for fragment in template.ai_fragments() {
             let request = template.build_ai_fragment_request(
                 cwd,
@@ -342,7 +342,7 @@ fn verify_templates(
         if template.is_readme() {
             let context_bundle = context_bundles
                 .get(&template.source_path)
-                .expect("template context bundle should exist");
+                .ok_or_else(|| anyhow!("missing context bundle for {}", template.source_path))?;
             let report = template.verify_readme(&rendered, context_bundle, &ai_values);
             if let Err(error) = debug.write_verifier_report(
                 &format!("{report_prefix}-{}", template.output_name),
@@ -404,9 +404,12 @@ fn repair_ai_fragments(
         .into_par_iter()
         .enumerate()
         .map(|(offset, job)| {
-            let context_bundle = context_bundles
-                .get(&job.template.source_path)
-                .expect("template context bundle should exist");
+            let context_bundle =
+                context_bundles
+                    .get(&job.template.source_path)
+                    .ok_or_else(|| {
+                        anyhow!("missing context bundle for {}", job.template.source_path)
+                    })?;
             let current_ai = ai_values_by_template
                 .get(&job.template.source_path)
                 .cloned()
@@ -606,17 +609,16 @@ fn build_ai_fragment_prompt(request: &AiFragmentRequest) -> String {
         render_fragment_contract(request),
     );
     if !request.repair_notes.is_empty() {
-        write!(
-            prompt,
-            "\n<repair>\n{}\n</repair>\n",
-            request
+        prompt.push_str("\n<repair>\n");
+        prompt.push_str(
+            &request
                 .repair_notes
                 .iter()
                 .map(|note| format!("- {note}"))
                 .collect::<Vec<_>>()
-                .join("\n")
-        )
-        .expect("writing to String should not fail");
+                .join("\n"),
+        );
+        prompt.push_str("\n</repair>\n");
     }
     write!(
         prompt,
@@ -626,10 +628,10 @@ fn build_ai_fragment_prompt(request: &AiFragmentRequest) -> String {
         render_context_snippets(&request.context),
         request.document,
     )
-    .expect("writing to String should not fail");
+    .unwrap_or_else(|_| unreachable!("writing to String cannot fail"));
     if let Some(examples) = render_fragment_examples(request) {
         write!(prompt, "\n<examples>\n{examples}\n</examples>\n")
-            .expect("writing to String should not fail");
+            .unwrap_or_else(|_| unreachable!("writing to String cannot fail"));
     }
     prompt
 }

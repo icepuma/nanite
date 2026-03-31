@@ -98,7 +98,7 @@ impl InitProgress {
             let style = ProgressStyle::with_template(
                 "{spinner:.cyan} {prefix:.bold.dim} {wide_bar:.cyan/blue} {msg}",
             )
-            .expect("progress template should be valid")
+            .unwrap_or_else(|_| ProgressStyle::default_bar())
             .progress_chars("█▉▊▋▌▍▎▏ ")
             .tick_strings(&["⠋", "⠙", "⠸", "⠴", "⠦", "⠇"]);
             bar.set_style(style);

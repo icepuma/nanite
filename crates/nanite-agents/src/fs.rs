@@ -54,7 +54,7 @@ fn collect_files(
     };
 
     for entry in
-        fs::read_dir(&current_root).with_context(|| format!("failed to read {}", current_root))?
+        fs::read_dir(&current_root).with_context(|| format!("failed to read {current_root}"))?
     {
         let entry = entry?;
         let file_name = entry
@@ -90,7 +90,7 @@ pub fn existing_target_kind(path: &Utf8Path) -> Result<ExistingTargetKind> {
     }
 
     let metadata =
-        fs::metadata(path.as_std_path()).with_context(|| format!("failed to inspect {}", path))?;
+        fs::metadata(path.as_std_path()).with_context(|| format!("failed to inspect {path}"))?;
     if metadata.is_dir() {
         return Ok(ExistingTargetKind::Directory);
     }
@@ -103,17 +103,16 @@ pub fn write_rendered_tree(
     rendered: &BTreeMap<Utf8PathBuf, Vec<u8>>,
 ) -> Result<()> {
     if target_dir.exists() {
-        fs::remove_dir_all(target_dir)
-            .with_context(|| format!("failed to remove {}", target_dir))?;
+        fs::remove_dir_all(target_dir).with_context(|| format!("failed to remove {target_dir}"))?;
     }
-    fs::create_dir_all(target_dir).with_context(|| format!("failed to create {}", target_dir))?;
+    fs::create_dir_all(target_dir).with_context(|| format!("failed to create {target_dir}"))?;
 
     for (relative_path, contents) in rendered {
         let target = target_dir.join(relative_path);
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent))?;
+            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
         }
-        fs::write(&target, contents).with_context(|| format!("failed to write {}", target))?;
+        fs::write(&target, contents).with_context(|| format!("failed to write {target}"))?;
     }
 
     Ok(())
@@ -125,21 +124,21 @@ pub fn ensure_symlink(target: &Utf8Path, link_path: &Utf8Path) -> Result<()> {
     }
 
     if let Some(parent) = link_path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent))?;
+        fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
     }
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::symlink;
 
-        symlink(target, link_path).with_context(|| format!("failed to link {}", link_path))?;
+        symlink(target, link_path).with_context(|| format!("failed to link {link_path}"))?;
     }
 
     #[cfg(windows)]
     {
         use std::os::windows::fs::symlink_dir;
 
-        symlink_dir(target, link_path).with_context(|| format!("failed to link {}", link_path))?;
+        symlink_dir(target, link_path).with_context(|| format!("failed to link {link_path}"))?;
     }
 
     Ok(())
@@ -147,11 +146,11 @@ pub fn ensure_symlink(target: &Utf8Path, link_path: &Utf8Path) -> Result<()> {
 
 pub fn remove_path(path: &Utf8Path) -> Result<()> {
     let metadata =
-        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {}", path))?;
+        fs::symlink_metadata(path).with_context(|| format!("failed to inspect {path}"))?;
     if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
-        fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", path))?;
+        fs::remove_dir_all(path).with_context(|| format!("failed to remove {path}"))?;
     } else {
-        fs::remove_file(path).with_context(|| format!("failed to remove {}", path))?;
+        fs::remove_file(path).with_context(|| format!("failed to remove {path}"))?;
     }
     Ok(())
 }

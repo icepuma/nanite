@@ -42,7 +42,7 @@ pub fn command_setup(
         workspace_paths.skills_root(),
     )?;
 
-    let defaults = Config::default_for(app_paths)?;
+    let defaults = Config::default_for(app_paths);
     Config {
         workspace_root: workspace_root.clone(),
         agent: defaults.agent,

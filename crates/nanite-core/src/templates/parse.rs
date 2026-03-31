@@ -19,25 +19,22 @@ pub(super) fn parse_template_fragments(
         let content_start = start + 2;
         let end_offset = body[content_start..]
             .find("}}")
-            .ok_or_else(|| anyhow!("unterminated template placeholder in {}", source_path))?;
+            .ok_or_else(|| anyhow!("unterminated template placeholder in {source_path}"))?;
         let end = content_start + end_offset;
         let raw_inner = &body[content_start..end];
         if raw_inner.contains('\n') {
-            bail!(
-                "multiline template placeholders are not supported in {}",
-                source_path
-            );
+            bail!("multiline template placeholders are not supported in {source_path}");
         }
 
         let inner = raw_inner.trim();
         if inner.is_empty() {
-            bail!("empty template placeholder in {}", source_path);
+            bail!("empty template placeholder in {source_path}");
         }
 
         if let Some(prompt) = inner.strip_prefix("ai:") {
             let prompt = prompt.trim();
             if prompt.is_empty() {
-                bail!("empty AI placeholder prompt in {}", source_path);
+                bail!("empty AI placeholder prompt in {source_path}");
             }
             fragments.push(TemplateFragment::Ai(AiPlaceholder {
                 index: ai_index,
@@ -54,7 +51,7 @@ pub(super) fn parse_template_fragments(
             } else if let Some(expression) = supported_tera_expression(name) {
                 fragments.push(TemplateFragment::Expression(expression));
             } else {
-                bail!("invalid placeholder `{name}` in {}", source_path);
+                bail!("invalid placeholder `{name}` in {source_path}");
             }
         }
 

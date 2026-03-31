@@ -28,10 +28,12 @@ pub(super) fn verify_readme(
 }
 
 impl ReadmeVerificationReport {
-    pub fn is_valid(&self) -> bool {
+    #[must_use]
+    pub const fn is_valid(&self) -> bool {
         self.findings.is_empty()
     }
 
+    #[must_use]
     pub fn repairable_fragment_indexes(&self) -> Vec<usize> {
         self.findings
             .iter()
@@ -42,10 +44,12 @@ impl ReadmeVerificationReport {
             .collect()
     }
 
+    #[must_use]
     pub fn has_non_repairable_findings(&self) -> bool {
         self.findings.iter().any(|finding| !finding.repairable)
     }
 
+    #[must_use]
     pub fn render_messages(&self) -> Vec<String> {
         self.findings
             .iter()

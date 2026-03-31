@@ -49,6 +49,7 @@ pub enum SyncAction {
 }
 
 impl SyncAction {
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Create => "create",
@@ -74,6 +75,7 @@ impl FileDiff {
         }
     }
 
+    #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.added.is_empty() && self.changed.is_empty() && self.removed.is_empty()
     }

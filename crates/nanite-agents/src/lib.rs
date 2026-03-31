@@ -1,10 +1,3 @@
-#![allow(
-    clippy::missing_errors_doc,
-    clippy::must_use_candidate,
-    clippy::similar_names,
-    clippy::uninlined_format_args
-)]
-
 mod fs;
 mod load;
 mod model;

@@ -10,6 +10,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// Clones a git remote into the Nanite workspace.
+///
+/// # Errors
+///
+/// Returns an error when the remote cannot be parsed, the destination cannot be
+/// prepared, or the clone itself fails.
 pub fn clone_repo(
     workspace_root: &Utf8Path,
     remote: &str,
@@ -37,6 +43,12 @@ pub fn clone_repo(
     ))
 }
 
+/// Imports an existing local repository into the Nanite workspace.
+///
+/// # Errors
+///
+/// Returns an error when the source path is invalid, the repository metadata
+/// cannot be derived, or the repository tree cannot be copied.
 pub fn import_repo(
     workspace_root: &Utf8Path,
     source: &Utf8Path,
@@ -70,7 +82,7 @@ pub fn import_repo(
     let parent = destination
         .parent()
         .ok_or_else(|| anyhow!("failed to determine import destination for {destination}"))?;
-    fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent))?;
+    fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
     copy_dir_recursive(source, &destination)?;
 
     Ok(record_from_spec(
@@ -81,7 +93,13 @@ pub fn import_repo(
     ))
 }
 
-pub fn prepare_clone_destination(destination: &Utf8Path, force: bool) -> Result<()> {
+/// Prepares a clone destination, optionally removing an existing directory first.
+///
+/// # Errors
+///
+/// Returns an error when an existing destination is not allowed, cannot be
+/// removed, or the destination parent directory cannot be created.
+pub(super) fn prepare_clone_destination(destination: &Utf8Path, force: bool) -> Result<()> {
     if destination.exists() {
         if !force {
             bail!("{destination} already exists; rerun with --force to overwrite");
@@ -92,7 +110,7 @@ pub fn prepare_clone_destination(destination: &Utf8Path, force: bool) -> Result<
     let parent = destination
         .parent()
         .ok_or_else(|| anyhow!("failed to determine clone destination for {destination}"))?;
-    fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent))?;
+    fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
     Ok(())
 }
 
