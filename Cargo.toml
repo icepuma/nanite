@@ -31,7 +31,7 @@ serde_yaml = "=0.9.34"
 tera = "=1.20.1"
 tempfile = "=3.27.0"
 time = { version = "=0.3.47", features = ["formatting", "macros", "parsing", "serde"] }
-toml = "=1.1.0"
+toml = "=1.1.1"
 url = "=2.5.8"
 walkdir = "=2.5.0"
 
