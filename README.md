@@ -1,6 +1,6 @@
 # nanite
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Verify](https://github.com/icepuma/nanite/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/icepuma/nanite/actions/workflows/verify.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Nanite is a local CLI for managing an AI-first repository workspace. It creates a fixed workspace layout for repositories, templates, and skills so cloning repos, rendering standard files, syncing agent setup, and moving between projects all happen through one repeatable workflow.
 
