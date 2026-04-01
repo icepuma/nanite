@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: 1.94.0
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive_suffix: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            build_tool: zigbuild
+            smoke_test: "true"
+          - archive_suffix: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            build_tool: zigbuild
+            smoke_test: "false"
+          - archive_suffix: aarch64-apple-darwin
+            runner: macos-14
+            target: aarch64-apple-darwin
+            build_tool: cargo
+            smoke_test: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Zig
+        if: matrix.build_tool == 'zigbuild'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Install cargo-zigbuild
+        if: matrix.build_tool == 'zigbuild'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "${RUST_TOOLCHAIN}" --profile minimal
+          rustup override set "${RUST_TOOLCHAIN}"
+          rustup target add "${{ matrix.target }}"
+
+      - name: Build release binary with cargo-zigbuild
+        if: matrix.build_tool == 'zigbuild'
+        run: cargo zigbuild --locked --release -p nanite-cli --target "${{ matrix.target }}"
+
+      - name: Build release binary with cargo
+        if: matrix.build_tool == 'cargo'
+        run: cargo build --locked --release -p nanite-cli --target "${{ matrix.target }}"
+
+      - name: Inspect binary
+        run: file "./target/${{ matrix.target }}/release/nanite"
+
+      - name: Smoke test binary
+        if: matrix.smoke_test == 'true'
+        run: ./target/${{ matrix.target }}/release/nanite --version
+
+      - name: Package release archive
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          archive_root="nanite-${TAG}-${{ matrix.archive_suffix }}"
+          package_dir="dist/${archive_root}"
+
+          mkdir -p "$package_dir"
+          cp "./target/${{ matrix.target }}/release/nanite" "$package_dir/"
+          cp README.md LICENSE "$package_dir/"
+          tar -C dist -czf "dist/${archive_root}.tar.gz" "${archive_root}"
+
+      - name: Upload archive artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.archive_suffix }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: package-*
+          merge-multiple: true
+
+      - name: Write checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          generate_release_notes: true
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
+          overwrite_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          tag_name: ${{ github.ref_name }}
