@@ -336,6 +336,9 @@ fn commands_fail_before_setup() {
     env.assert_unconfigured_failure(&["repo", "clone", "https://example.com/a/b.git"]);
     env.assert_unconfigured_failure(&["repo", "remove", "github.com/example/tool"]);
     env.assert_unconfigured_failure(&["repo", "import", "imports/toolbox"]);
+    env.assert_unconfigured_failure(&["search", "workspace_root"]);
+    env.assert_unconfigured_failure(&["search", "serve"]);
+    env.assert_unconfigured_failure(&["search", "index", "rebuild"]);
     env.assert_unconfigured_failure(&["jumpto"]);
     env.assert_unconfigured_failure(&["shell", "init", "fish"]);
 }
@@ -599,6 +602,48 @@ fn repo_import_preserves_git_data_and_origin_layout() {
         fs::read_to_string(imported.join("README.md")).unwrap(),
         "hello\n"
     );
+}
+
+#[test]
+fn search_prints_workspace_hits_in_text_mode() {
+    let env = TestEnv::new();
+    env.setup();
+    let repo = env.repos_root().join("github.com/icepuma/searchable");
+    fs::create_dir_all(repo.join(".git")).unwrap();
+    fs::create_dir_all(repo.join("src")).unwrap();
+    fs::write(
+        repo.join("src/lib.rs"),
+        "pub fn workspace_root() {}\nstruct HttpServer;\n",
+    )
+    .unwrap();
+
+    env.command()
+        .args(["search", "workspace_root"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "src/lib.rs:1:pub fn workspace_root() {}",
+        ));
+}
+
+#[test]
+fn search_supports_json_output() {
+    let env = TestEnv::new();
+    env.setup();
+    let repo = env.repos_root().join("github.com/icepuma/searchable");
+    fs::create_dir_all(repo.join(".git")).unwrap();
+    fs::create_dir_all(repo.join("src")).unwrap();
+    fs::write(repo.join("src/lib.rs"), "struct HttpServer;\n").unwrap();
+
+    env.command()
+        .args(["search", "--json", "HttpServer"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("\"path\": \"src/lib.rs\""))
+        .stdout(predicates::str::contains("\"line_number\": 1"))
+        .stdout(predicates::str::contains(
+            "\"text\": \"struct HttpServer;\"",
+        ));
 }
 
 #[test]

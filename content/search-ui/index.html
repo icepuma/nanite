@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nanite Search</title>
+    <!-- __STYLE__ -->
+  </head>
+  <body>
+    <div class="shell">
+      <section class="workspace-panel">
+        <form id="search-form" class="search-form">
+          <div class="search-row">
+            <label class="query-label">
+              <input
+                id="query"
+                name="query"
+                type="search"
+                placeholder='repo:nanite "workspace_root" or file:mod.rs'
+                aria-label="Search query"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </label>
+            <div id="reindex-shell" class="reindex-shell">
+              <button id="reindex" class="btn" type="button">Re-index</button>
+              <section id="reindex-popover" class="reindex-popover" aria-live="polite">
+                <p class="popover-label">Index stats</p>
+                <p id="reindex-stats-title" class="popover-title">Preparing workspace index</p>
+                <dl class="popover-stats">
+                  <div>
+                    <dt>State</dt>
+                    <dd id="reindex-stat-state">starting</dd>
+                  </div>
+                  <div>
+                    <dt>Files</dt>
+                    <dd id="reindex-stat-files">0</dd>
+                  </div>
+                  <div>
+                    <dt>Lines</dt>
+                    <dd id="reindex-stat-lines">0</dd>
+                  </div>
+                  <div>
+                    <dt>Skipped</dt>
+                    <dd id="reindex-stat-skipped">0</dd>
+                  </div>
+                </dl>
+                <p id="reindex-stats-note" class="popover-note"></p>
+              </section>
+            </div>
+          </div>
+
+          <section id="progress-panel" class="progress-panel" aria-live="polite">
+            <div class="progress-copy">
+              <h2 id="progress-title">Preparing workspace index</h2>
+              <p id="progress-detail" class="progress-detail">
+                Search results appear as soon as the index is ready.
+              </p>
+            </div>
+            <div class="progress-stack">
+              <div
+                id="progress-track"
+                class="progress-track progress-track-indeterminate"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                <div id="progress-bar" class="progress-bar"></div>
+              </div>
+              <div class="progress-meta-row">
+                <p id="progress-meta" class="progress-meta">Waiting for status…</p>
+                <p id="progress-note" class="progress-note"></p>
+              </div>
+            </div>
+          </section>
+        </form>
+
+        <div class="meta-row">
+          <p id="status" class="status">Loading repositories…</p>
+        </div>
+      </section>
+
+      <main class="workspace-grid">
+        <section class="results-panel">
+          <div class="panel-header">
+            <h2 id="results-title">No query yet</h2>
+            <p id="results-meta" class="panel-meta"></p>
+          </div>
+          <ol id="results" class="results-list"></ol>
+        </section>
+
+        <section class="viewer-panel">
+          <div class="panel-header">
+            <div class="viewer-header-copy">
+              <h2 id="viewer-title">Select a result</h2>
+              <p id="viewer-meta" class="panel-meta"></p>
+            </div>
+            <div id="viewer-open-shell" class="viewer-open-shell">
+              <button id="viewer-open" class="btn" type="button" disabled>
+                Open in Zed
+              </button>
+              <section id="viewer-open-popover" class="viewer-open-popover" aria-live="polite">
+                <p class="popover-label">Zed</p>
+                <p id="viewer-open-title" class="popover-title">Open the selected file in Zed</p>
+                <p id="viewer-open-note" class="popover-note">
+                  Opens the selected file in Zed, rooted at its repository, and jumps to the
+                  matching line without forcing a new workspace.
+                </p>
+              </section>
+            </div>
+          </div>
+          <div id="viewer" class="viewer-empty">
+            <p>Select a result to view the file.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+    <!-- __SCRIPT__ -->
+  </body>
+</html>

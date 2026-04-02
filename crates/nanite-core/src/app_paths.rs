@@ -115,6 +115,11 @@ impl AppPaths {
     }
 
     #[must_use]
+    pub fn search_index_root(&self) -> Utf8PathBuf {
+        self.state.join("search-index")
+    }
+
+    #[must_use]
     pub fn codex_render_root(&self) -> Utf8PathBuf {
         self.data.join("rendered/codex")
     }
@@ -216,6 +221,10 @@ mod tests {
         assert_eq!(
             paths.claude_plugin_seed_root().as_str(),
             "/tmp/home/.local/share/nanite/claude/plugins"
+        );
+        assert_eq!(
+            paths.search_index_root().as_str(),
+            "/tmp/home/.local/state/nanite/search-index"
         );
         assert_eq!(paths.state_dir().as_str(), "/tmp/home/.local/state/nanite");
     }

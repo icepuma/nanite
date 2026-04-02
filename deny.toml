@@ -15,6 +15,10 @@ allow = [
     "Unlicense",
     "Zlib",
 ]
+exceptions = [
+    { allow = ["GPL-3.0"], crate = "arborium-nginx" },
+    { allow = ["MPL-2.0"], crate = "arborium-uiua" },
+]
 
 [advisories]
 version = 2

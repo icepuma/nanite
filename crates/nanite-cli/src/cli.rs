@@ -1,4 +1,4 @@
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -57,6 +57,8 @@ pub enum Commands {
         #[command(subcommand)]
         command: ShellCommands,
     },
+    #[command(about = "Search code in the workspace", long_about = None)]
+    Search(SearchArgs),
     #[command(hide = true, name = "__complete-jumpto")]
     CompleteJumpto,
     #[command(hide = true, name = "__complete-repo-remove")]
@@ -161,6 +163,81 @@ pub enum ShellCommands {
         #[arg(value_enum, value_name = "SHELL", help = "Shell to generate setup for")]
         shell: ShellArg,
     },
+}
+
+#[derive(Debug, Clone, Args)]
+#[command(
+    about = "Search code in the workspace",
+    long_about = None,
+    args_conflicts_with_subcommands = true,
+    after_help = "Examples:\n  nanite search \"workspace_root\"\n  nanite search --repo github.com/icepuma/nanite \"command_repo\"\n  nanite search serve\n  nanite search index rebuild"
+)]
+pub struct SearchArgs {
+    #[command(subcommand)]
+    pub command: Option<SearchCommands>,
+    #[arg(value_name = "QUERY", help = "Search query")]
+    pub query: Option<String>,
+    #[arg(
+        long,
+        value_name = "REPO",
+        help = "Restrict results to a repository id"
+    )]
+    pub repo: Option<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Restrict results to files matching a path query"
+    )]
+    pub path: Option<String>,
+    #[arg(
+        long,
+        value_name = "FILE",
+        help = "Restrict results to files matching a file name query"
+    )]
+    pub file: Option<String>,
+    #[arg(long, value_name = "LANG", help = "Restrict results to a language id")]
+    pub lang: Option<String>,
+    #[arg(
+        long,
+        default_value_t = 50,
+        value_name = "LIMIT",
+        help = "Maximum results to print"
+    )]
+    pub limit: usize,
+    #[arg(long, help = "Emit JSON instead of human-readable output")]
+    pub json: bool,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SearchCommands {
+    #[command(about = "Serve the local search UI", long_about = None)]
+    Serve {
+        #[arg(
+            long,
+            default_value = "127.0.0.1",
+            value_name = "HOST",
+            help = "Host interface to bind"
+        )]
+        host: String,
+        #[arg(
+            long,
+            default_value_t = 0,
+            value_name = "PORT",
+            help = "Port to bind; 0 chooses an ephemeral port"
+        )]
+        port: u16,
+    },
+    #[command(about = "Manage the persistent search index", long_about = None)]
+    Index {
+        #[command(subcommand)]
+        command: SearchIndexCommands,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SearchIndexCommands {
+    #[command(about = "Force a full rebuild of the workspace index", long_about = None)]
+    Rebuild,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]

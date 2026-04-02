@@ -3,6 +3,10 @@ use camino::{Utf8Path, Utf8PathBuf};
 use nanite_core::{AppPaths, Registry};
 use std::fs;
 
+pub fn command_available(command: &str) -> bool {
+    which::which(command).is_ok()
+}
+
 pub fn current_directory() -> Result<Utf8PathBuf> {
     utf8_from_path_buf(std::env::current_dir().context("failed to resolve the current directory")?)
 }

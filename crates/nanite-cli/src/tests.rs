@@ -25,6 +25,7 @@ fn fish_init_includes_wrapper_and_env_export() {
         )),
         git_binary: "git".to_owned(),
         fzf_binary: "fzf".to_owned(),
+        zed_binary: "zed".to_owned(),
     };
 
     let script = render_fish_init(&context);

@@ -8,6 +8,7 @@ mod jump;
 #[cfg(test)]
 mod license_catalog;
 mod repo;
+mod search;
 mod setup;
 mod shell;
 mod skill;
@@ -36,6 +37,7 @@ fn run_with(cli: cli::Cli) -> Result<i32> {
     let app_paths = AppPaths::discover()?;
     let git_binary = std::env::var("NANITE_GIT").unwrap_or_else(|_| "git".to_owned());
     let fzf_binary = std::env::var("NANITE_FZF").unwrap_or_else(|_| "fzf".to_owned());
+    let zed_binary = std::env::var("NANITE_ZED").unwrap_or_else(|_| "zed".to_owned());
 
     match cli.command {
         cli::Commands::Setup { path } => {
@@ -43,7 +45,8 @@ fn run_with(cli: cli::Cli) -> Result<i32> {
             Ok(0)
         }
         cli::Commands::Init { force } => {
-            let context = context::ContextState::load(&app_paths, &git_binary, &fzf_binary)?;
+            let context =
+                context::ContextState::load(&app_paths, &git_binary, &fzf_binary, &zed_binary)?;
             init::command_init(&context, force)?;
             Ok(0)
         }
@@ -52,17 +55,20 @@ fn run_with(cli: cli::Cli) -> Result<i32> {
             Ok(0)
         }
         cli::Commands::Repo { command } => {
-            let context = context::ContextState::load(&app_paths, &git_binary, &fzf_binary)?;
+            let context =
+                context::ContextState::load(&app_paths, &git_binary, &fzf_binary, &zed_binary)?;
             repo::command_repo(&context, command)?;
             Ok(0)
         }
         cli::Commands::Skill { command } => {
-            let context = context::ContextState::load(&app_paths, &git_binary, &fzf_binary)?;
+            let context =
+                context::ContextState::load(&app_paths, &git_binary, &fzf_binary, &zed_binary)?;
             skill::command_skill(&context, command)?;
             Ok(0)
         }
         cli::Commands::Jumpto { query } => {
-            let context = context::ContextState::load(&app_paths, &git_binary, &fzf_binary)?;
+            let context =
+                context::ContextState::load(&app_paths, &git_binary, &fzf_binary, &zed_binary)?;
             Ok(
                 jump::command_jumpto(&context, query.as_deref())?.map_or(1, |path| {
                     println!("{path}");
@@ -71,17 +77,26 @@ fn run_with(cli: cli::Cli) -> Result<i32> {
             )
         }
         cli::Commands::Shell { command } => {
-            let context = context::ContextState::load(&app_paths, &git_binary, &fzf_binary)?;
+            let context =
+                context::ContextState::load(&app_paths, &git_binary, &fzf_binary, &zed_binary)?;
             shell::command_shell(&context, command);
             Ok(0)
         }
+        cli::Commands::Search(args) => {
+            let context =
+                context::ContextState::load(&app_paths, &git_binary, &fzf_binary, &zed_binary)?;
+            search::command_search(&context, args)?;
+            Ok(0)
+        }
         cli::Commands::CompleteJumpto => {
-            let context = context::ContextState::load(&app_paths, &git_binary, &fzf_binary)?;
+            let context =
+                context::ContextState::load(&app_paths, &git_binary, &fzf_binary, &zed_binary)?;
             jump::command_complete_jumpto(&context)?;
             Ok(0)
         }
         cli::Commands::CompleteRepoRemove => {
-            let context = context::ContextState::load(&app_paths, &git_binary, &fzf_binary)?;
+            let context =
+                context::ContextState::load(&app_paths, &git_binary, &fzf_binary, &zed_binary)?;
             jump::command_complete_repo_remove(&context)?;
             Ok(0)
         }

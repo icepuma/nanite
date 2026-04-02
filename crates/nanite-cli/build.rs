@@ -15,8 +15,10 @@ fn main() -> BuildResult<()> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let gitignore_root = manifest_dir.join("../../content/gitignores");
     let license_root = manifest_dir.join("../../content/licenses/choosealicense");
+    let search_ui_root = manifest_dir.join("../../content/search-ui");
     emit_rerun_markers(&gitignore_root)?;
     emit_rerun_markers(&license_root)?;
+    emit_rerun_markers(&search_ui_root)?;
 
     let mut gitignore_entries = Vec::new();
     collect_gitignore_entries(&gitignore_root, &gitignore_root, &mut gitignore_entries)?;
@@ -56,12 +58,14 @@ fn main() -> BuildResult<()> {
     }
 
     let generated_licenses = render_license_entries(&license_entries)?;
+    let generated_search_ui = render_search_ui(&search_ui_root)?;
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     fs::write(
         out_dir.join("generated_gitignores.rs"),
         generated_gitignores,
     )?;
     fs::write(out_dir.join("generated_licenses.rs"), generated_licenses)?;
+    fs::write(out_dir.join("generated_search_ui.rs"), generated_search_ui)?;
     Ok(())
 }
 
@@ -266,4 +270,19 @@ fn render_license_rules(
     }
     rendered.push(']');
     Ok(())
+}
+
+fn render_search_ui(root: &Path) -> BuildResult<String> {
+    let html = fs::read_to_string(root.join("index.html"))?;
+    let style = fs::read_to_string(root.join("style.css"))?;
+    let script = fs::read_to_string(root.join("app.js"))?;
+
+    let html = html
+        .replace("<!-- __STYLE__ -->", &format!("<style>\n{style}\n</style>"))
+        .replace(
+            "<!-- __SCRIPT__ -->",
+            &format!("<script>\n{script}\n</script>"),
+        );
+
+    Ok(format!("pub const SEARCH_UI_HTML: &str = {html:?};\n"))
 }

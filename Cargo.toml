@@ -20,11 +20,13 @@ tag-name = "v{{version}}"
 
 [workspace.dependencies]
 anyhow = "=1.0.102"
+arborium = { version = "=2.16.0", features = ["all-languages"] }
 assert_cmd = "=2.2.0"
 camino = { version = "=1.2.2", features = ["serde1"] }
 clap = { version = "=4.6.0", features = ["derive", "wrap_help"] }
 clap_complete = "=4.6.0"
 crossterm = "=0.29.0"
+ignore = "=0.4.25"
 predicates = "=3.1.4"
 ratatui = "=0.30.0"
 rayon = "=1.11.0"
@@ -32,12 +34,15 @@ regex = "=1.12.3"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
 serde_yaml = "=0.9.34"
+tantivy = "=0.26.0"
 tera = "=1.20.1"
 tempfile = "=3.27.0"
 time = { version = "=0.3.47", features = ["formatting", "macros", "parsing", "serde"] }
+tiny_http = "=0.12.0"
 toml = "=1.1.1"
 url = "=2.5.8"
 walkdir = "=2.5.0"
+which = "=8.0.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
