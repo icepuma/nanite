@@ -29,6 +29,27 @@ pub fn configured_author_name(cwd: &Utf8Path) -> Result<Option<String>> {
     Ok(author)
 }
 
+/// Reads the configured Git author email for the repository containing `cwd`.
+///
+/// # Errors
+///
+/// Returns an error when the repository can be discovered but its Git config
+/// cannot be read.
+pub fn configured_author_email(cwd: &Utf8Path) -> Result<Option<String>> {
+    let Ok(repo) = gix::discover(cwd.as_std_path()) else {
+        return Ok(None);
+    };
+
+    let author = repo
+        .config_snapshot()
+        .string(User::EMAIL)
+        .map(|value| value.to_string())
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+
+    Ok(author)
+}
+
 /// Scans the workspace tree for git repositories and resolves their origins.
 ///
 /// # Errors

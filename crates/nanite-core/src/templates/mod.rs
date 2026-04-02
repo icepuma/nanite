@@ -11,3 +11,4 @@ pub use model::{
     RepoContextFacts, TemplateBundle, TemplateFragment, TemplateMetadata, TemplateRepository,
     TemplateVariant, TextPlaceholder,
 };
+pub use repository::template_variant_from_text;

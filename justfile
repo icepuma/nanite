@@ -1,5 +1,7 @@
 set shell := ["bash", "-c"]
 
+sync-vendored-files: sync-gitignore-files sync-license-files
+
 sync-gitignore-files:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -28,9 +30,35 @@ sync-gitignore-files:
     printf 'destination: %s\n' "$destination_dir"
     printf 'files synced: %s\n' "$count"
 
-check-gitignores:
-    just sync-gitignore-files
-    git diff --exit-code -- content/gitignores
+sync-license-files:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    destination_dir="$PWD/content/licenses/choosealicense"
+    temp_dir="$(mktemp -d)"
+    trap 'rm -rf "$temp_dir"' EXIT
+    clone_dir="$temp_dir/choosealicense"
+
+    git clone --depth=1 https://github.com/github/choosealicense.com.git "$clone_dir"
+
+    mkdir -p "$destination_dir/_licenses" "$destination_dir/_data"
+    find "$destination_dir/_licenses" -type f -name '*.txt' -delete
+    rm -f "$destination_dir/_data/rules.yml"
+
+    count=0
+    while IFS= read -r -d '' source_path; do
+      relative_path="${source_path#"$clone_dir"/}"
+      target_path="$destination_dir/$relative_path"
+      mkdir -p "$(dirname "$target_path")"
+      cp "$source_path" "$target_path"
+      count=$((count + 1))
+    done < <(find "$clone_dir/_licenses" -type f -name '*.txt' -print0 | LC_ALL=C sort -z)
+
+    cp "$clone_dir/_data/rules.yml" "$destination_dir/_data/rules.yml"
+    find "$destination_dir" -depth -type d -empty -delete
+
+    printf 'destination: %s\n' "$destination_dir"
+    printf 'license files synced: %s\n' "$count"
+    printf 'rules file: %s\n' "$destination_dir/_data/rules.yml"
 
 verify:
     cargo fmt --all -- --check

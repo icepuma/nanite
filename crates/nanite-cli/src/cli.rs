@@ -5,7 +5,7 @@ use clap::{CommandFactory, Parser, Subcommand};
     name = "nanite",
     about = "Manage local repositories in an AI-first workspace",
     long_about = None,
-    after_help = "Examples:\n  nanite setup ~/workspace\n  nanite init\n  nanite generate gitignore\n  nanite repo clone github.com/icepuma/nanite\n  nanite repo refresh\n  nanite skill sync codex --apply\n  nanite jumpto nanite",
+    after_help = "Examples:\n  nanite setup ~/workspace\n  nanite init\n  nanite generate gitignore\n  nanite generate license\n  nanite repo clone github.com/icepuma/nanite\n  nanite repo refresh\n  nanite skill sync codex --apply\n  nanite jumpto nanite",
     version
 )]
 pub struct Cli {
@@ -67,12 +67,17 @@ pub enum Commands {
 #[command(
     about = "Generate files from bundled assets",
     long_about = None,
-    after_help = "Example:\n  nanite generate gitignore"
+    after_help = "Examples:\n  nanite generate gitignore\n  nanite generate license"
 )]
 pub enum GenerateCommands {
     #[command(about = "Generate a .gitignore from bundled templates", long_about = None)]
     Gitignore {
         #[arg(long, help = "Overwrite an existing .gitignore file")]
+        force: bool,
+    },
+    #[command(about = "Generate a LICENSE from bundled templates", long_about = None)]
+    License {
+        #[arg(long, help = "Overwrite an existing LICENSE file")]
         force: bool,
     },
 }

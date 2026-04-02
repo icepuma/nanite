@@ -120,6 +120,26 @@ impl TemplateRepository {
     }
 }
 
+/// Parses a raw template body into a single `TemplateVariant`.
+///
+/// # Errors
+///
+/// Returns an error when the source path is invalid for placeholder parsing or
+/// when the template body contains unsupported placeholders.
+pub fn template_variant_from_text(
+    output_name: impl Into<String>,
+    source_path: Utf8PathBuf,
+    body: &str,
+) -> Result<TemplateVariant> {
+    let fragments = parse_template_fragments(body, &source_path)?;
+
+    Ok(TemplateVariant {
+        output_name: output_name.into(),
+        source_path,
+        fragments,
+    })
+}
+
 impl TemplateBundle {
     /// Prepares all templates in the bundle by resolving text placeholders.
     ///

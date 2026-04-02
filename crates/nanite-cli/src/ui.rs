@@ -14,9 +14,11 @@ use ratatui::widgets::{
 };
 use ratatui::{Frame, Terminal};
 use std::collections::BTreeSet;
+use std::fmt::Write as _;
 use std::io::{self, Stderr, Stdout, Write};
 
 pub const GITIGNORE_UPSTREAM_REPO: &str = "github/gitignore";
+pub const LICENSE_UPSTREAM_REPO: &str = "github/choosealicense.com";
 
 pub struct BrowserItem<T>
 where
@@ -69,11 +71,18 @@ pub fn choose(prompt: &str, options: &[String]) -> Result<usize> {
         })
         .collect();
 
-    choose_from_browser(
+    select_one(
         prompt,
         "Browse with the arrow keys or j/k. Type to filter, Enter to choose.",
         items,
     )
+}
+
+pub fn select_one<T>(title: &str, subtitle: &str, items: Vec<BrowserItem<T>>) -> Result<T>
+where
+    T: Copy,
+{
+    choose_from_browser(title, subtitle, items)
 }
 
 pub fn multi_select<T>(title: &str, subtitle: &str, items: Vec<BrowserItem<T>>) -> Result<Vec<T>>
@@ -128,6 +137,14 @@ where
                 code: KeyCode::Backspace,
                 ..
             } => state.backspace_filter(),
+            KeyEvent {
+                code: KeyCode::Left,
+                ..
+            } => state.scroll_detail_up(4),
+            KeyEvent {
+                code: KeyCode::Right,
+                ..
+            } => state.scroll_detail_down(4),
             KeyEvent {
                 code: KeyCode::Char(' '),
                 ..
@@ -280,6 +297,14 @@ where
                 ..
             } => state.backspace_filter(),
             KeyEvent {
+                code: KeyCode::Left,
+                ..
+            } => state.scroll_detail_up(4),
+            KeyEvent {
+                code: KeyCode::Right,
+                ..
+            } => state.scroll_detail_down(4),
+            KeyEvent {
                 code: KeyCode::Enter,
                 ..
             } => {
@@ -412,6 +437,7 @@ fn draw_browser<T>(
         frame.render_stateful_widget(list, body_sections[0], &mut list_state);
     }
 
+    let detail_height = usize::from(body_sections[1].height.saturating_sub(2));
     let detail = state.current_item().map_or_else(
         || {
             Text::from(vec![
@@ -420,11 +446,11 @@ fn draw_browser<T>(
                 Line::styled("Move the cursor to inspect an entry.", muted_style()),
             ])
         },
-        |item| {
+        |_item| {
             Text::from(
-                item.detail_lines
-                    .iter()
-                    .cloned()
+                state
+                    .visible_detail_lines(detail_height)
+                    .into_iter()
                     .map(Line::from)
                     .collect::<Vec<_>>(),
             )
@@ -440,24 +466,23 @@ fn draw_browser<T>(
             if show_checkboxes {
                 legend_line(&[
                     ("↑↓", "move"),
+                    ("←→", "preview"),
                     ("space", "toggle"),
                     ("enter", "confirm"),
                     ("esc", "cancel"),
                 ])
             } else {
-                legend_line(&[("↑↓", "move"), ("enter", "choose"), ("esc", "cancel")])
+                legend_line(&[
+                    ("↑↓", "move"),
+                    ("←→", "preview"),
+                    ("enter", "choose"),
+                    ("esc", "cancel"),
+                ])
             }
         },
         |message| Line::styled(message.to_owned(), warning_style()),
     );
-    let status_line = Line::styled(
-        format!(
-            "visible {} of {}",
-            state.filtered_indices.len(),
-            state.items.len()
-        ),
-        caption_style(),
-    );
+    let status_line = Line::styled(state.status_summary(detail_height), caption_style());
     let footer = Paragraph::new(Text::from(vec![footer_line, Line::raw(""), status_line]))
         .block(panel("Keys"))
         .wrap(Wrap { trim: false });
@@ -699,6 +724,7 @@ where
     filter: String,
     filtered_indices: Vec<usize>,
     cursor: usize,
+    detail_offset: usize,
     notice: Option<String>,
 }
 
@@ -713,6 +739,7 @@ where
             filter: String::new(),
             filtered_indices: Vec::new(),
             cursor: 0,
+            detail_offset: 0,
             notice: None,
         };
         state.refresh_matches();
@@ -732,17 +759,20 @@ where
     fn move_up(&mut self) {
         if self.cursor > 0 {
             self.cursor -= 1;
+            self.detail_offset = 0;
         }
     }
 
     fn move_down(&mut self) {
         if self.cursor + 1 < self.filtered_indices.len() {
             self.cursor += 1;
+            self.detail_offset = 0;
         }
     }
 
     fn page_up(&mut self, amount: usize) {
         self.cursor = self.cursor.saturating_sub(amount);
+        self.detail_offset = 0;
     }
 
     fn page_down(&mut self, amount: usize) {
@@ -750,16 +780,33 @@ where
             return;
         }
         self.cursor = (self.cursor + amount).min(self.filtered_indices.len() - 1);
+        self.detail_offset = 0;
     }
 
     fn move_home(&mut self) {
         self.cursor = 0;
+        self.detail_offset = 0;
     }
 
     fn move_end(&mut self) {
         if !self.filtered_indices.is_empty() {
             self.cursor = self.filtered_indices.len() - 1;
+            self.detail_offset = 0;
         }
+    }
+
+    fn scroll_detail_up(&mut self, amount: usize) {
+        self.detail_offset = self.detail_offset.saturating_sub(amount);
+    }
+
+    fn scroll_detail_down(&mut self, amount: usize) {
+        let Some(item) = self.current_item() else {
+            return;
+        };
+        self.detail_offset = self
+            .detail_offset
+            .saturating_add(amount)
+            .min(item.detail_lines.len().saturating_sub(1));
     }
 
     fn set_notice(&mut self, notice: Option<String>) {
@@ -773,6 +820,35 @@ where
     fn current_item(&self) -> Option<&BrowserItem<T>> {
         self.current_global_index()
             .and_then(|index| self.items.get(index))
+    }
+
+    fn visible_detail_lines(&self, max_lines: usize) -> Vec<String> {
+        let Some(item) = self.current_item() else {
+            return Vec::new();
+        };
+        if max_lines == 0 {
+            return Vec::new();
+        }
+
+        let end = (self.detail_offset + max_lines).min(item.detail_lines.len());
+        item.detail_lines[self.detail_offset..end].to_vec()
+    }
+
+    fn status_summary(&self, detail_height: usize) -> String {
+        let mut summary = format!(
+            "visible {} of {}",
+            self.filtered_indices.len(),
+            self.items.len()
+        );
+        if let Some(item) = self.current_item() {
+            let total = item.detail_lines.len();
+            let start = self.detail_offset.min(total).saturating_add(1);
+            let end = (self.detail_offset + detail_height).min(total);
+            if total > 0 {
+                let _ = write!(summary, "  ·  preview {start}-{end} of {total}");
+            }
+        }
+        summary
     }
 
     fn refresh_matches(&mut self) {
@@ -791,6 +867,7 @@ where
         } else {
             self.cursor = self.cursor.min(self.filtered_indices.len() - 1);
         }
+        self.detail_offset = 0;
         self.notice = None;
     }
 }

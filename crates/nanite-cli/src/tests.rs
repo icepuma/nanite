@@ -99,6 +99,20 @@ fn generate_gitignore_accepts_force_flag() {
 }
 
 #[test]
+fn generate_license_accepts_force_flag() {
+    let cli = Cli::parse_from(["nanite", "generate", "license", "--force"]);
+
+    match cli.command {
+        crate::cli::Commands::Generate {
+            command: crate::cli::GenerateCommands::License { force },
+        } => {
+            assert!(force);
+        }
+        _ => panic!("expected generate license command"),
+    }
+}
+
+#[test]
 fn jumpto_uses_styled_fzf_arguments() {
     let args = jumpto_fzf_args();
 

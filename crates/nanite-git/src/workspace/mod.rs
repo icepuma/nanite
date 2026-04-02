@@ -4,7 +4,7 @@ mod scan;
 
 pub use clone::{clone_repo, import_repo};
 pub use remove::{remove_repo, resolve_repo_remove_target};
-pub use scan::{configured_author_name, git_origin, scan_workspace};
+pub use scan::{configured_author_email, configured_author_name, git_origin, scan_workspace};
 
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -58,8 +58,8 @@ fn record_from_spec(
 #[cfg(test)]
 mod tests {
     use super::{
-        clone::prepare_clone_destination, configured_author_name, destination_for, remove_repo,
-        scan::relative_spec,
+        clone::prepare_clone_destination, configured_author_email, configured_author_name,
+        destination_for, remove_repo, scan::relative_spec,
     };
     use crate::remote::RemoteSpec;
     use camino::{Utf8Path, Utf8PathBuf};
@@ -167,6 +167,23 @@ mod tests {
         let author = configured_author_name(&repo_path).unwrap();
 
         assert_eq!(author.as_deref(), Some("Jane Doe"));
+    }
+
+    #[test]
+    fn configured_author_email_reads_user_email_from_git_config() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let repo_path = Utf8PathBuf::from_path_buf(tempdir.path().join("repo")).unwrap();
+        let repo = gix::init(repo_path.as_std_path()).unwrap();
+        let config_path = Utf8PathBuf::from_path_buf(repo.git_dir().join("config")).unwrap();
+        fs::write(
+            &config_path,
+            "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tlogallrefupdates = true\n[user]\n\temail = jane@example.com\n",
+        )
+        .unwrap();
+
+        let email = configured_author_email(&repo_path).unwrap();
+
+        assert_eq!(email.as_deref(), Some("jane@example.com"));
     }
 
     fn existing_destination() -> (TempDir, Utf8PathBuf) {

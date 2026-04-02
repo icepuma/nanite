@@ -422,6 +422,104 @@ fn generate_gitignore_overwrites_with_force() {
 }
 
 #[test]
+fn generate_license_succeeds_before_setup() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("licensed");
+    fs::create_dir_all(&project_dir).unwrap();
+    initialize_git_repo(&project_dir, Some("Jane Doe"), None, None);
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "license"])
+        .write_stdin("MIT\n")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("wrote"))
+        .stdout(predicates::str::contains("LICENSE"));
+
+    let rendered = fs::read_to_string(project_dir.join("LICENSE")).unwrap();
+    assert!(rendered.contains("MIT License"));
+    assert!(rendered.contains("Jane Doe"));
+}
+
+#[test]
+fn generate_license_prompts_for_missing_placeholders() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("license-prompt");
+    fs::create_dir_all(&project_dir).unwrap();
+    initialize_git_repo(&project_dir, None, None, None);
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "license"])
+        .write_stdin("MIT\nPrompted Person\n")
+        .assert()
+        .success();
+
+    let rendered = fs::read_to_string(project_dir.join("LICENSE")).unwrap();
+    assert!(rendered.contains("Prompted Person"));
+}
+
+#[test]
+fn generate_license_refuses_to_overwrite_without_force() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("license-existing");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(project_dir.join("LICENSE"), "keep-me\n").unwrap();
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "license"])
+        .write_stdin("MIT\n")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("already exists"));
+
+    assert_eq!(
+        fs::read_to_string(project_dir.join("LICENSE")).unwrap(),
+        "keep-me\n"
+    );
+}
+
+#[test]
+fn generate_license_overwrites_with_force() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("license-overwrite");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(project_dir.join("LICENSE"), "keep-me\n").unwrap();
+    initialize_git_repo(&project_dir, Some("Overwrite User"), None, None);
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "license", "--force"])
+        .write_stdin("MIT\n")
+        .assert()
+        .success();
+
+    let rendered = fs::read_to_string(project_dir.join("LICENSE")).unwrap();
+    assert!(rendered.contains("MIT License"));
+    assert!(rendered.contains("Overwrite User"));
+    assert!(!rendered.contains("keep-me"));
+}
+
+#[test]
+fn generate_license_non_tty_menu_shows_upstream_source() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("license-menu");
+    fs::create_dir_all(&project_dir).unwrap();
+    initialize_git_repo(&project_dir, Some("Menu User"), None, None);
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "license"])
+        .write_stdin("MIT\n")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("github/choosealicense.com"))
+        .stdout(predicates::str::contains("_licenses/mit.txt"));
+}
+
+#[test]
 fn init_interactively_renders_a_deterministic_template() {
     let env = TestEnv::new();
     env.setup();
@@ -899,6 +997,24 @@ fn write_script(path: &Utf8PathBuf, contents: &str) {
         let mut permissions = fs::metadata(path).unwrap().permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(path, permissions).unwrap();
+    }
+}
+
+fn initialize_git_repo(
+    repo_dir: &Utf8PathBuf,
+    name: Option<&str>,
+    email: Option<&str>,
+    origin: Option<&str>,
+) {
+    run_git(["init", repo_dir.as_str()]);
+    if let Some(name) = name {
+        run_git(["-C", repo_dir.as_str(), "config", "user.name", name]);
+    }
+    if let Some(email) = email {
+        run_git(["-C", repo_dir.as_str(), "config", "user.email", email]);
+    }
+    if let Some(origin) = origin {
+        run_git(["-C", repo_dir.as_str(), "remote", "add", "origin", origin]);
     }
 }
 

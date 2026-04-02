@@ -40,6 +40,7 @@ nanite jumpto nanite
 - Workspace bootstrap: `nanite setup` creates the expected `repos/`, `templates/`, and `skills/` layout.
 - Template rendering: `nanite init` renders a template into the current repository and supports `--force` when replacing an existing target file.
 - Gitignore generation: `nanite generate gitignore` builds a `.gitignore` from a searchable catalog vendored from `github/gitignore`, shows each template's upstream source path, and supports `--force` when replacing an existing file.
+- License generation: `nanite generate license` builds a `LICENSE` file from a searchable catalog downloaded from `github/choosealicense.com`, shows each template's SPDX id and upstream source path, and prompts only for missing fields.
 - Repository management: `nanite repo clone`, `nanite repo import`, `nanite repo remove`, and `nanite repo refresh` keep the workspace registry aligned with the repositories on disk.
 - Fast navigation: `nanite jumpto [QUERY]` selects a workspace repository and prints its path for shell wrappers or other tooling.
 - Agent setup: `nanite skill sync codex|claude [--apply]` syncs bundled Nanite-managed skills into supported agent install locations.
@@ -58,11 +59,13 @@ nanite jumpto nanite
 
 Run `nanite init` inside a repository when you want to render a managed template into the current working tree.
 Run `nanite generate gitignore` in any project directory when you want to search bundled templates, inspect their upstream source paths, and render a `.gitignore`.
+Run `nanite generate license` in any project directory when you want to browse SPDX-backed license templates, inspect their upstream provenance, and render a `LICENSE`.
 
 For agent setup and shell integration:
 
 ```sh
 nanite generate gitignore
+nanite generate license
 nanite skill sync codex --apply
 nanite shell init fish | source
 ```
@@ -76,7 +79,7 @@ cargo test -q
 just verify
 ```
 
-Use `cargo build` and `cargo run -- --help` for local iteration while changing the CLI. If you want a locally installed binary from the workspace checkout, use `cargo install --locked --path crates/nanite-cli`. Refresh the vendored gitignore catalog from upstream with `just sync-gitignore-files`.
+Use `cargo build` and `cargo run -- --help` for local iteration while changing the CLI. If you want a locally installed binary from the workspace checkout, use `cargo install --locked --path crates/nanite-cli`. Download the generated-file catalogs locally with `just sync-vendored-files`; CI does the same before running `just verify`.
 
 ## License
 

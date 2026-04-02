@@ -4,6 +4,7 @@ mod generate;
 pub(crate) mod gitignore_catalog;
 mod init;
 mod jump;
+pub(crate) mod license_catalog;
 mod repo;
 mod setup;
 mod shell;
@@ -45,7 +46,7 @@ fn run_with(cli: cli::Cli) -> Result<i32> {
             Ok(0)
         }
         cli::Commands::Generate { command } => {
-            generate::command_generate(command)?;
+            generate::command_generate(command, &git_binary)?;
             Ok(0)
         }
         cli::Commands::Repo { command } => {

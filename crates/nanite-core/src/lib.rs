@@ -14,6 +14,6 @@ pub use templates::{
     AiFragment, AiFragmentRequest, AiPlaceholder, ContextBundle, ContextSnippet, PreparedBundle,
     PreparedTemplate, ReadmeFragmentRole, ReadmeVerificationFinding, ReadmeVerificationReport,
     RepoContextFacts, TemplateBundle, TemplateFragment, TemplateMetadata, TemplateRepository,
-    TemplateVariant, TextPlaceholder,
+    TemplateVariant, TextPlaceholder, template_variant_from_text,
 };
 pub use workspace::WorkspacePaths;
