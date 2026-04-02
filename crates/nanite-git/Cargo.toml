@@ -10,7 +10,6 @@ version.workspace = true
 anyhow.workspace = true
 camino.workspace = true
 gix = { version = "=0.81.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "sha1", "worktree-mutation"] }
-indicatif.workspace = true
 nanite-core = { path = "../nanite-core" }
 regex.workspace = true
 time.workspace = true

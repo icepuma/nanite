@@ -1,5 +1,6 @@
 [package]
 name = "nanite-cli"
+build = "build.rs"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
@@ -15,11 +16,11 @@ anyhow.workspace = true
 camino.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
-indicatif.workspace = true
-inquire.workspace = true
+crossterm.workspace = true
 nanite-agents = { path = "../nanite-agents" }
 nanite-core = { path = "../nanite-core" }
 nanite-git = { path = "../nanite-git" }
+ratatui.workspace = true
 rayon.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

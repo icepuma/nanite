@@ -16,7 +16,7 @@ use nanite_core::{
     ReadmeVerificationReport, TemplateRepository,
 };
 use nanite_git::configured_author_name;
-use prompting::{InitPrompter, InquirePrompter, IoPrompter};
+use prompting::{InitPrompter, IoPrompter, TuiPrompter};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -29,7 +29,7 @@ pub fn command_init(context: &ContextState, force: bool) -> Result<()> {
     let current_dir = current_directory()?;
     let interactive = io::stdin().is_terminal() && io::stdout().is_terminal();
     if interactive {
-        let mut prompter = InquirePrompter;
+        let mut prompter = TuiPrompter;
         return command_init_with_prompter(
             context,
             &repository,

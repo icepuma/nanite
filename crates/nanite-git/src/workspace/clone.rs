@@ -1,14 +1,14 @@
 use crate::copy::copy_dir_recursive;
 use crate::remote::parse_remote;
-use crate::workspace::{destination_for, record_from_spec, remove_existing_path};
+use crate::workspace::{
+    SharedCloneProgressDisplay, destination_for, record_from_spec, remove_existing_path,
+};
 use anyhow::{Context, Result, anyhow, bail};
 use camino::Utf8Path;
-use indicatif::ProgressBar;
 use nanite_core::{ProjectRecord, SourceKind};
 use std::fs;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /// Clones a git remote into the Nanite workspace.
 ///
@@ -20,15 +20,15 @@ pub fn clone_repo(
     workspace_root: &Utf8Path,
     remote: &str,
     force: bool,
-    progress_bar: Option<ProgressBar>,
+    progress_display: Option<SharedCloneProgressDisplay>,
 ) -> Result<ProjectRecord> {
     let spec = parse_remote(remote)?;
     let destination = destination_for(workspace_root, &spec);
     prepare_clone_destination(&destination, force)?;
 
     let should_interrupt = AtomicBool::new(false);
-    if let Some(progress_bar) = progress_bar {
-        let mut progress = CloneProgress::new(progress_bar);
+    if let Some(progress_display) = progress_display {
+        let mut progress = CloneProgress::new(progress_display);
         perform_clone(remote, &destination, &mut progress, &should_interrupt)?;
     } else {
         let mut progress = gix::progress::Discard;
@@ -137,16 +137,15 @@ where
 
 #[derive(Clone)]
 struct CloneProgress {
-    bar: ProgressBar,
+    display: SharedCloneProgressDisplay,
     counter: Arc<AtomicUsize>,
     name: Arc<Mutex<Option<String>>>,
 }
 
 impl CloneProgress {
-    fn new(bar: ProgressBar) -> Self {
-        bar.enable_steady_tick(Duration::from_millis(100));
+    fn new(display: SharedCloneProgressDisplay) -> Self {
         Self {
-            bar,
+            display,
             counter: Arc::new(AtomicUsize::default()),
             name: Arc::new(Mutex::new(None)),
         }
@@ -154,7 +153,6 @@ impl CloneProgress {
 
     fn refresh_message(&self, message: Option<&str>) {
         let current = self.counter.load(Ordering::Relaxed) as u64;
-        self.bar.set_position(current);
         let name = self.name.lock().ok().and_then(|guard| guard.clone());
         let rendered = match (
             name.as_deref().filter(|value| !value.is_empty()),
@@ -165,14 +163,19 @@ impl CloneProgress {
             (None, Some(message)) => message.to_owned(),
             (None, None) => "cloning".to_owned(),
         };
-        self.bar.set_message(rendered);
+        if let Ok(mut display) = self.display.lock() {
+            display.set_position(usize::try_from(current).unwrap_or(usize::MAX));
+            display.set_message(&rendered);
+        }
     }
 }
 
 impl gix::Count for CloneProgress {
     fn set(&self, step: usize) {
         self.counter.store(step, Ordering::Relaxed);
-        self.bar.set_position(step as u64);
+        if let Ok(mut display) = self.display.lock() {
+            display.set_position(step);
+        }
     }
 
     fn step(&self) -> usize {
@@ -181,7 +184,9 @@ impl gix::Count for CloneProgress {
 
     fn inc_by(&self, step: usize) {
         let next = self.counter.fetch_add(step, Ordering::Relaxed) + step;
-        self.bar.set_position(next as u64);
+        if let Ok(mut display) = self.display.lock() {
+            display.set_position(next);
+        }
     }
 
     fn counter(&self) -> gix::progress::StepShared {
@@ -191,14 +196,14 @@ impl gix::Count for CloneProgress {
 
 impl gix::Progress for CloneProgress {
     fn init(&mut self, max: Option<usize>, _unit: Option<gix::progress::Unit>) {
-        if let Some(max) = max {
-            self.bar.set_length(max as u64);
+        if let Ok(mut display) = self.display.lock() {
+            display.set_total(max);
         }
     }
 
     fn set_max(&mut self, max: Option<usize>) -> Option<usize> {
-        if let Some(max) = max {
-            self.bar.set_length(max as u64);
+        if let Ok(mut display) = self.display.lock() {
+            display.set_total(max);
         }
         None
     }

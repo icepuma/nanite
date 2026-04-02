@@ -85,6 +85,20 @@ fn repo_clone_accepts_force_flag() {
 }
 
 #[test]
+fn generate_gitignore_accepts_force_flag() {
+    let cli = Cli::parse_from(["nanite", "generate", "gitignore", "--force"]);
+
+    match cli.command {
+        crate::cli::Commands::Generate {
+            command: crate::cli::GenerateCommands::Gitignore { force },
+        } => {
+            assert!(force);
+        }
+        _ => panic!("expected generate gitignore command"),
+    }
+}
+
+#[test]
 fn jumpto_uses_styled_fzf_arguments() {
     let args = jumpto_fzf_args();
 

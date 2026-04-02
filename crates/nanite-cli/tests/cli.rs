@@ -341,6 +341,87 @@ fn commands_fail_before_setup() {
 }
 
 #[test]
+fn generate_gitignore_succeeds_before_setup() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("scratch");
+    fs::create_dir_all(&project_dir).unwrap();
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "gitignore"])
+        .write_stdin("root/rust\n")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("wrote"))
+        .stdout(predicates::str::contains(".gitignore"));
+
+    let rendered = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
+    assert!(rendered.contains("\ntarget\n"));
+}
+
+#[test]
+fn generate_gitignore_combines_selected_templates_in_catalog_order() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("combined");
+    fs::create_dir_all(&project_dir).unwrap();
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "gitignore"])
+        .write_stdin("root/rust,root/java\n")
+        .assert()
+        .success();
+
+    let rendered = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
+    assert!(rendered.contains("# --- java ---"));
+    assert!(rendered.contains("# --- rust ---"));
+    let java_index = rendered.find("*.class").unwrap();
+    let rust_index = rendered.find("\ntarget\n").unwrap();
+
+    assert!(java_index < rust_index);
+}
+
+#[test]
+fn generate_gitignore_refuses_to_overwrite_without_force() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("existing");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(project_dir.join(".gitignore"), "keep-me\n").unwrap();
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "gitignore"])
+        .write_stdin("root/rust\n")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("already exists"));
+
+    assert_eq!(
+        fs::read_to_string(project_dir.join(".gitignore")).unwrap(),
+        "keep-me\n"
+    );
+}
+
+#[test]
+fn generate_gitignore_overwrites_with_force() {
+    let env = TestEnv::new();
+    let project_dir = env.home_dir.join("overwrite");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(project_dir.join(".gitignore"), "keep-me\n").unwrap();
+
+    env.command()
+        .current_dir(&project_dir)
+        .args(["generate", "gitignore", "--force"])
+        .write_stdin("root/rust\n")
+        .assert()
+        .success();
+
+    let rendered = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
+    assert!(rendered.contains("\ntarget\n"));
+    assert!(!rendered.contains("keep-me"));
+}
+
+#[test]
 fn init_interactively_renders_a_deterministic_template() {
     let env = TestEnv::new();
     env.setup();

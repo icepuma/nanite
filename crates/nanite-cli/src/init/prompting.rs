@@ -1,6 +1,5 @@
-use crate::ui::inquire_render_config;
-use anyhow::{Context, Result, anyhow, bail};
-use inquire::{Select, Text};
+use crate::ui;
+use anyhow::{Result, bail};
 use nanite_core::{Prompter, TextPlaceholder};
 use std::io::{Read, Write};
 
@@ -8,31 +7,17 @@ pub(super) trait InitPrompter: Prompter {
     fn choose(&mut self, prompt: &str, options: &[String]) -> Result<usize>;
 }
 
-pub(super) struct InquirePrompter;
+pub(super) struct TuiPrompter;
 
-impl InitPrompter for InquirePrompter {
+impl InitPrompter for TuiPrompter {
     fn choose(&mut self, prompt: &str, options: &[String]) -> Result<usize> {
-        if options.is_empty() {
-            bail!("{prompt} has no options");
-        }
-
-        let selected = Select::new(prompt, options.to_vec())
-            .with_render_config(inquire_render_config())
-            .prompt()
-            .with_context(|| format!("failed to choose {prompt}"))?;
-        options
-            .iter()
-            .position(|option| option == &selected)
-            .ok_or_else(|| anyhow!("selected option `{selected}` was not in the prompt list"))
+        ui::choose(prompt, options)
     }
 }
 
-impl Prompter for InquirePrompter {
+impl Prompter for TuiPrompter {
     fn prompt(&mut self, placeholder: &TextPlaceholder) -> Result<String> {
-        Text::new(&placeholder.prompt)
-            .with_render_config(inquire_render_config())
-            .prompt()
-            .with_context(|| format!("failed to capture {}", placeholder.prompt))
+        ui::prompt_text(&placeholder.prompt)
     }
 }
 

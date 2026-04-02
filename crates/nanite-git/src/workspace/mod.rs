@@ -10,9 +10,18 @@ use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use nanite_core::{ProjectRecord, SourceKind};
 use std::fs;
+use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 
 use crate::remote::RemoteSpec;
+
+pub trait CloneProgressDisplay {
+    fn set_total(&mut self, total: Option<usize>);
+    fn set_position(&mut self, position: usize);
+    fn set_message(&mut self, message: &str);
+}
+
+pub type SharedCloneProgressDisplay = Arc<Mutex<dyn CloneProgressDisplay + Send>>;
 
 fn remove_existing_path(path: &Utf8Path) -> Result<()> {
     let metadata =

@@ -1,10 +1,14 @@
-use indicatif::{ProgressBar, ProgressStyle};
+use crate::ui::StatusTerminal;
 use nanite_core::PreparedBundle;
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span, Text};
+use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap};
 use std::io::{self, IsTerminal};
-use std::time::Duration;
 
 enum InitProgressMode {
-    Tty(ProgressBar),
+    Tty(StatusTerminal),
     Plain,
 }
 
@@ -24,6 +28,8 @@ struct InitStep {
 
 pub struct InitProgress {
     mode: InitProgressMode,
+    bundle_name: String,
+    template_count: usize,
     steps: Vec<InitStep>,
     inspect_index: Option<usize>,
     generate_index: Option<usize>,
@@ -94,22 +100,17 @@ impl InitProgress {
         });
 
         let mode = if io::stderr().is_terminal() {
-            let bar = ProgressBar::new(steps.len() as u64);
-            let style = ProgressStyle::with_template(
-                "{spinner:.cyan} {prefix:.bold.dim} {wide_bar:.cyan/blue} {msg}",
-            )
-            .unwrap_or_else(|_| ProgressStyle::default_bar())
-            .progress_chars("█▉▊▋▌▍▎▏ ")
-            .tick_strings(&["⠋", "⠙", "⠸", "⠴", "⠦", "⠇"]);
-            bar.set_style(style);
-            bar.enable_steady_tick(Duration::from_millis(100));
-            InitProgressMode::Tty(bar)
+            StatusTerminal::stderr()
+                .map(InitProgressMode::Tty)
+                .unwrap_or(InitProgressMode::Plain)
         } else {
             InitProgressMode::Plain
         };
 
-        let progress = Self {
+        let mut progress = Self {
             mode,
+            bundle_name: prepared.name.clone(),
+            template_count: prepared.templates().len(),
             steps,
             inspect_index,
             generate_index,
@@ -173,33 +174,32 @@ impl InitProgress {
     }
 
     pub fn finish_success(self) {
-        match self.mode {
-            InitProgressMode::Tty(progress) => progress.finish_and_clear(),
-            InitProgressMode::Plain => {}
-        }
+        drop(self);
     }
 
     pub fn finish_failure(self) {
-        let rendered = self.rendered();
-        match self.mode {
-            InitProgressMode::Tty(progress) => progress.abandon_with_message(rendered),
-            InitProgressMode::Plain => {}
-        }
+        drop(self);
     }
 
-    fn render(&self) {
-        match &self.mode {
-            InitProgressMode::Tty(progress) => {
-                progress.set_position(self.tty_position() as u64);
-                progress.set_prefix(self.tty_prefix());
-                progress.set_message(self.tty_message());
+    fn render(&mut self) {
+        let fallback = self.last_milestone();
+        let snapshot = InitProgressSnapshot::from(&*self);
+        match &mut self.mode {
+            InitProgressMode::Tty(terminal) => {
+                if terminal
+                    .draw(|frame| render_progress_frame(frame, &snapshot))
+                    .is_err()
+                {
+                    eprintln!("{fallback}");
+                }
             }
             InitProgressMode::Plain => {
-                eprintln!("{}", self.last_milestone());
+                eprintln!("{fallback}");
             }
         }
     }
 
+    #[cfg(test)]
     pub fn rendered(&self) -> String {
         if let Some(step) = self
             .steps
@@ -245,55 +245,6 @@ impl InitProgress {
         )
     }
 
-    fn completed_steps(&self) -> usize {
-        self.steps
-            .iter()
-            .filter(|step| matches!(step.status, InitStepState::Done))
-            .count()
-    }
-
-    fn tty_position(&self) -> usize {
-        let completed = self.completed_steps();
-        if self
-            .steps
-            .iter()
-            .any(|step| matches!(step.status, InitStepState::Active))
-        {
-            (completed + 1).min(self.steps.len())
-        } else {
-            completed
-        }
-    }
-
-    fn tty_prefix(&self) -> String {
-        let index = self
-            .current_step_index()
-            .map_or(1, |index| index.saturating_add(1));
-        format!("step {index}/{}", self.steps.len())
-    }
-
-    fn tty_message(&self) -> String {
-        let Some(index) = self.current_step_index() else {
-            return "Waiting for work".to_owned();
-        };
-        let step = &self.steps[index];
-        let status = match step.status {
-            InitStepState::Pending => "Queued",
-            InitStepState::Active => "Working",
-            InitStepState::Done => "Done",
-            InitStepState::Failed => "Failed",
-        };
-        let detail = step
-            .detail
-            .as_deref()
-            .map(Self::truncate_progress_detail)
-            .filter(|detail| !detail.is_empty());
-        detail.map_or_else(
-            || format!("{status} · {}", step.label),
-            |detail| format!("{status} · {} · {detail}", step.label),
-        )
-    }
-
     fn current_step_index(&self) -> Option<usize> {
         self.steps
             .iter()
@@ -320,10 +271,230 @@ impl InitProgress {
         truncated
     }
 
+    #[cfg(test)]
     fn render_step_message(prefix: &str, step: &InitStep) -> String {
         step.detail.as_ref().map_or_else(
             || format!("{prefix} {}", step.label),
             |detail| format!("{prefix} {}: {detail}", step.label),
         )
     }
+}
+
+struct InitProgressSnapshot {
+    bundle_name: String,
+    template_count: usize,
+    current_index: Option<usize>,
+    steps: Vec<InitStepSnapshot>,
+}
+
+struct InitStepSnapshot {
+    label: String,
+    status: InitStepState,
+    detail: Option<String>,
+}
+
+impl From<&InitProgress> for InitProgressSnapshot {
+    fn from(progress: &InitProgress) -> Self {
+        Self {
+            bundle_name: progress.bundle_name.clone(),
+            template_count: progress.template_count,
+            current_index: progress.current_step_index(),
+            steps: progress
+                .steps
+                .iter()
+                .map(|step| InitStepSnapshot {
+                    label: step.label.clone(),
+                    status: step.status,
+                    detail: step.detail.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn render_progress_frame(frame: &mut Frame<'_>, snapshot: &InitProgressSnapshot) {
+    let area = frame.area();
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4),
+            Constraint::Min(8),
+            Constraint::Length(3),
+        ])
+        .split(area);
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(52), Constraint::Percentage(48)])
+        .split(sections[1]);
+
+    let header = Paragraph::new(Text::from(vec![
+        Line::from(vec![
+            Span::styled("nanite init", title_style()),
+            Span::raw("  "),
+            Span::styled(format!("bundle: {}", snapshot.bundle_name), muted_style()),
+        ]),
+        Line::styled(
+            format!(
+                "Preparing {} file(s) in the current repository",
+                snapshot.template_count
+            ),
+            muted_style(),
+        ),
+        Line::styled(
+            "Track bundle selection, AI generation, verification, and file writes.",
+            caption_style(),
+        ),
+    ]))
+    .block(panel("Status"));
+    frame.render_widget(header, sections[0]);
+
+    let items = snapshot
+        .steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| {
+            let icon = match step.status {
+                InitStepState::Pending => "○",
+                InitStepState::Active => "▶",
+                InitStepState::Done => "✓",
+                InitStepState::Failed => "×",
+            };
+            let icon_style = match step.status {
+                InitStepState::Pending => muted_style(),
+                InitStepState::Active => active_style(),
+                InitStepState::Done => done_style(),
+                InitStepState::Failed => failed_style(),
+            };
+            let detail = step
+                .detail
+                .as_deref()
+                .map(InitProgress::truncate_progress_detail)
+                .filter(|detail| !detail.is_empty());
+            let line = detail.map_or_else(
+                || {
+                    Line::from(vec![
+                        Span::styled(icon, icon_style),
+                        Span::raw(" "),
+                        Span::raw(step.label.clone()),
+                    ])
+                },
+                |detail| {
+                    Line::from(vec![
+                        Span::styled(icon, icon_style),
+                        Span::raw(" "),
+                        Span::raw(step.label.clone()),
+                        Span::styled(format!("  {detail}"), muted_style()),
+                    ])
+                },
+            );
+            let mut item = ListItem::new(line);
+            if Some(index) == snapshot.current_index {
+                item = item.style(Style::default().add_modifier(Modifier::BOLD));
+            }
+            item
+        })
+        .collect::<Vec<_>>();
+    let list = List::new(items).block(panel("Steps"));
+    frame.render_widget(list, body[0]);
+
+    let detail = snapshot
+        .current_index
+        .and_then(|index| snapshot.steps.get(index));
+    let detail_lines = detail.map_or_else(
+        || {
+            vec![
+                Line::styled("Waiting for work", muted_style()),
+                Line::raw(""),
+                Line::styled("The selected bundle is ready to render.", muted_style()),
+            ]
+        },
+        |step| {
+            let status = match step.status {
+                InitStepState::Pending => "Queued",
+                InitStepState::Active => "Working",
+                InitStepState::Done => "Done",
+                InitStepState::Failed => "Failed",
+            };
+            let status_style = match step.status {
+                InitStepState::Pending => muted_style(),
+                InitStepState::Active => active_style(),
+                InitStepState::Done => done_style(),
+                InitStepState::Failed => failed_style(),
+            };
+            let mut lines = vec![
+                Line::from(vec![
+                    Span::styled(status, status_style),
+                    Span::raw("  "),
+                    Span::raw(step.label.clone()),
+                ]),
+                Line::raw(""),
+            ];
+            if let Some(detail) = &step.detail {
+                lines.push(Line::raw(detail.clone()));
+                lines.push(Line::raw(""));
+            }
+            lines.push(Line::styled(
+                "Nanite will restore the terminal when this run completes.",
+                muted_style(),
+            ));
+            lines
+        },
+    );
+    let detail = Paragraph::new(Text::from(detail_lines))
+        .block(panel("Current step"))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(detail, body[1]);
+
+    let footer = Paragraph::new(Text::from(vec![Line::styled(
+        "This live view stays open until the current render completes or fails.",
+        caption_style(),
+    )]))
+    .block(panel("Info"));
+    frame.render_widget(footer, sections[2]);
+}
+
+fn panel(title: &str) -> Block<'_> {
+    Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Rgb(67, 81, 96)))
+        .title(Line::styled(
+            title.to_owned(),
+            Style::default()
+                .fg(Color::Rgb(255, 196, 87))
+                .add_modifier(Modifier::BOLD),
+        ))
+}
+
+fn title_style() -> Style {
+    Style::default()
+        .fg(Color::Rgb(145, 214, 128))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn muted_style() -> Style {
+    Style::default().fg(Color::Rgb(144, 154, 169))
+}
+
+fn caption_style() -> Style {
+    Style::default().fg(Color::Rgb(112, 122, 137))
+}
+
+fn active_style() -> Style {
+    Style::default()
+        .fg(Color::Rgb(97, 219, 194))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn done_style() -> Style {
+    Style::default()
+        .fg(Color::Rgb(145, 214, 128))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn failed_style() -> Style {
+    Style::default()
+        .fg(Color::Rgb(255, 120, 120))
+        .add_modifier(Modifier::BOLD)
 }

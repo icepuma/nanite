@@ -1,5 +1,7 @@
 mod cli;
 mod context;
+mod generate;
+pub(crate) mod gitignore_catalog;
 mod init;
 mod jump;
 mod repo;
@@ -40,6 +42,10 @@ fn run_with(cli: cli::Cli) -> Result<i32> {
         cli::Commands::Init { force } => {
             let context = context::ContextState::load(&app_paths, &git_binary, &fzf_binary)?;
             init::command_init(&context, force)?;
+            Ok(0)
+        }
+        cli::Commands::Generate { command } => {
+            generate::command_generate(command)?;
             Ok(0)
         }
         cli::Commands::Repo { command } => {

@@ -33,5 +33,8 @@ jobs:
         with:
           tool: just,cargo-nextest,cargo-deny
 
+      - name: Verify vendored gitignore catalog is up to date
+        run: just check-gitignores
+
       - name: Run just verify
         run: just verify
