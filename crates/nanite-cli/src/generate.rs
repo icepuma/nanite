@@ -147,43 +147,6 @@ struct LicenseTemplate {
     template_body: &'static str,
 }
 
-impl LicenseTemplate {
-    #[allow(clippy::too_many_arguments)]
-    const fn new(
-        id: &'static str,
-        spdx_id: &'static str,
-        title: &'static str,
-        nickname: Option<&'static str>,
-        description: &'static str,
-        how: &'static str,
-        permissions: &'static [LicenseRule],
-        conditions: &'static [LicenseRule],
-        limitations: &'static [LicenseRule],
-        featured: bool,
-        hidden: bool,
-        source_path: &'static str,
-        raw_body: &'static str,
-        template_body: &'static str,
-    ) -> Self {
-        Self {
-            id,
-            spdx_id,
-            title,
-            nickname,
-            description,
-            how,
-            permissions,
-            conditions,
-            limitations,
-            featured,
-            hidden,
-            source_path,
-            raw_body,
-            template_body,
-        }
-    }
-}
-
 include!(concat!(env!("OUT_DIR"), "/generated_gitignores.rs"));
 include!(concat!(env!("OUT_DIR"), "/generated_licenses.rs"));
 
@@ -746,8 +709,6 @@ mod tests {
         render_gitignore, resolve_gitignore_selection_token, resolve_license_selection_token,
         sort_gitignore_templates_by_catalog_order,
     };
-    use crate::gitignore_catalog::metadata_from_relative_path;
-    use std::path::Path;
 
     #[test]
     fn gitignore_catalog_contains_known_entries_and_is_sorted() {
@@ -813,18 +774,6 @@ mod tests {
     }
 
     #[test]
-    fn nested_path_metadata_is_derived_consistently() {
-        let relative = Path::new("community/Java/Maven.gitignore");
-        let entry = metadata_from_relative_path(relative).unwrap();
-
-        assert_eq!(entry.id, "community/java/maven");
-        assert_eq!(entry.label, "maven");
-        assert_eq!(entry.group, "community/java");
-        assert_eq!(entry.display, "maven [community/java]");
-        assert_eq!(entry.source_path, "community/Java/Maven.gitignore");
-    }
-
-    #[test]
     fn non_tty_gitignore_selection_accepts_indexes_ids_labels_and_source_paths() {
         let templates = gitignore_catalog();
 
@@ -842,38 +791,38 @@ mod tests {
     #[test]
     fn license_selection_accepts_spdx_title_nickname_and_source_path() {
         let templates = [
-            LicenseTemplate::new(
-                "mit",
-                "MIT",
-                "MIT License",
-                Some("MIT"),
-                "Permissive",
-                "Copy it.",
-                &[],
-                &[],
-                &[],
-                true,
-                false,
-                "_licenses/mit.txt",
-                "MIT body",
-                "MIT body",
-            ),
-            LicenseTemplate::new(
-                "apache-2.0",
-                "Apache-2.0",
-                "Apache License 2.0",
-                Some("Apache 2"),
-                "Permissive with patent grant",
-                "Copy it.",
-                &[],
-                &[],
-                &[],
-                true,
-                false,
-                "_licenses/apache-2.0.txt",
-                "Apache body",
-                "Apache body",
-            ),
+            LicenseTemplate {
+                id: "mit",
+                spdx_id: "MIT",
+                title: "MIT License",
+                nickname: Some("MIT"),
+                description: "Permissive",
+                how: "Copy it.",
+                permissions: &[],
+                conditions: &[],
+                limitations: &[],
+                featured: true,
+                hidden: false,
+                source_path: "_licenses/mit.txt",
+                raw_body: "MIT body",
+                template_body: "MIT body",
+            },
+            LicenseTemplate {
+                id: "apache-2.0",
+                spdx_id: "Apache-2.0",
+                title: "Apache License 2.0",
+                nickname: Some("Apache 2"),
+                description: "Permissive with patent grant",
+                how: "Copy it.",
+                permissions: &[],
+                conditions: &[],
+                limitations: &[],
+                featured: true,
+                hidden: false,
+                source_path: "_licenses/apache-2.0.txt",
+                raw_body: "Apache body",
+                template_body: "Apache body",
+            },
         ];
         let refs = templates.iter().collect::<Vec<_>>();
 

@@ -1,10 +1,12 @@
 mod cli;
 mod context;
 mod generate;
-pub(crate) mod gitignore_catalog;
+#[cfg(test)]
+mod gitignore_catalog;
 mod init;
 mod jump;
-pub(crate) mod license_catalog;
+#[cfg(test)]
+mod license_catalog;
 mod repo;
 mod setup;
 mod shell;

@@ -323,7 +323,6 @@ where
     }
 }
 
-#[allow(clippy::too_many_lines)]
 fn draw_browser<T>(
     frame: &mut Frame<'_>,
     title: &str,
@@ -334,7 +333,25 @@ fn draw_browser<T>(
 ) where
     T: Copy,
 {
-    let area = frame.area();
+    let layout = browser_layout(frame.area());
+    let summary = browser_summary(state, selected, show_checkboxes);
+
+    draw_browser_header(frame, layout.header, title, subtitle, &summary);
+    draw_browser_search(frame, layout.search, state);
+    draw_browser_list(frame, layout.list, state, selected, show_checkboxes);
+    draw_browser_detail(frame, layout.detail, state);
+    draw_browser_footer(frame, layout.footer, layout.detail, state, show_checkboxes);
+}
+
+struct BrowserLayout {
+    header: Rect,
+    search: Rect,
+    list: Rect,
+    detail: Rect,
+    footer: Rect,
+}
+
+fn browser_layout(area: Rect) -> BrowserLayout {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -348,12 +365,29 @@ fn draw_browser<T>(
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(54), Constraint::Percentage(46)])
         .split(sections[2]);
-    let selected_count = selected.map_or(0, BTreeSet::len);
-    let summary = if show_checkboxes {
+
+    BrowserLayout {
+        header: sections[0],
+        search: sections[1],
+        list: body_sections[0],
+        detail: body_sections[1],
+        footer: sections[3],
+    }
+}
+
+fn browser_summary<T>(
+    state: &BrowserState<T>,
+    selected: Option<&BTreeSet<usize>>,
+    show_checkboxes: bool,
+) -> String
+where
+    T: Copy,
+{
+    if show_checkboxes {
         format!(
             "{} shown · {} selected · bundled from {GITIGNORE_UPSTREAM_REPO}",
             state.filtered_indices.len(),
-            selected_count
+            selected.map_or(0, BTreeSet::len)
         )
     } else {
         format!(
@@ -361,16 +395,29 @@ fn draw_browser<T>(
             state.filtered_indices.len(),
             state.items.len()
         )
-    };
+    }
+}
 
+fn draw_browser_header(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    title: &str,
+    subtitle: &str,
+    summary: &str,
+) {
     let header = Paragraph::new(Text::from(vec![
         Line::styled(title, title_style()),
         Line::styled(subtitle, muted_style()),
         Line::styled(summary, caption_style()),
     ]))
     .block(panel("Nanite"));
-    frame.render_widget(header, sections[0]);
+    frame.render_widget(header, area);
+}
 
+fn draw_browser_search<T>(frame: &mut Frame<'_>, area: Rect, state: &BrowserState<T>)
+where
+    T: Copy,
+{
     let search_text = if state.filter.is_empty() {
         Text::from(vec![Line::styled(
             "Type to filter by name, id, group, or source path",
@@ -384,10 +431,21 @@ fn draw_browser<T>(
         ])])
     };
     let search = Paragraph::new(search_text).block(panel("Search"));
-    frame.render_widget(search, sections[1]);
+    frame.render_widget(search, area);
+}
 
+fn draw_browser_list<T>(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &BrowserState<T>,
+    selected: Option<&BTreeSet<usize>>,
+    show_checkboxes: bool,
+) where
+    T: Copy,
+{
     let list_title = format!("Options ({})", state.filtered_indices.len());
     let list_block = panel(&list_title);
+
     if state.filtered_indices.is_empty() {
         let empty = Paragraph::new(Text::from(vec![
             Line::styled("No matches", muted_style()),
@@ -399,46 +457,72 @@ fn draw_browser<T>(
         ]))
         .block(list_block)
         .wrap(Wrap { trim: false });
-        frame.render_widget(empty, body_sections[0]);
-    } else {
-        let items = state
-            .filtered_indices
-            .iter()
-            .map(|index| {
-                let item = &state.items[*index];
-                let marker = if show_checkboxes {
-                    if selected.is_some_and(|selected| selected.contains(index)) {
-                        "[x]"
-                    } else {
-                        "[ ]"
-                    }
-                } else {
-                    "›"
-                };
-
-                let mut spans = vec![Span::styled(marker, accent_style()), Span::raw(" ")];
-                spans.push(Span::styled(
-                    item.label.clone(),
-                    Style::default().fg(Color::White),
-                ));
-                if let Some(caption) = &item.caption {
-                    spans.push(Span::styled(format!("  {caption}"), muted_style()));
-                }
-
-                WidgetListItem::new(Line::from(spans))
-            })
-            .collect::<Vec<_>>();
-        let mut list_state = ListState::default();
-        list_state.select(Some(state.cursor));
-        let list = List::new(items)
-            .block(list_block)
-            .highlight_style(highlight_style())
-            .highlight_symbol("");
-        frame.render_stateful_widget(list, body_sections[0], &mut list_state);
+        frame.render_widget(empty, area);
+        return;
     }
 
-    let detail_height = usize::from(body_sections[1].height.saturating_sub(2));
-    let detail = state.current_item().map_or_else(
+    let items = state
+        .filtered_indices
+        .iter()
+        .map(|index| browser_list_item(&state.items[*index], *index, selected, show_checkboxes))
+        .collect::<Vec<_>>();
+    let mut list_state = ListState::default();
+    list_state.select(Some(state.cursor));
+    let list = List::new(items)
+        .block(list_block)
+        .highlight_style(highlight_style())
+        .highlight_symbol("");
+    frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+fn browser_list_item<T>(
+    item: &BrowserItem<T>,
+    index: usize,
+    selected: Option<&BTreeSet<usize>>,
+    show_checkboxes: bool,
+) -> WidgetListItem<'static>
+where
+    T: Copy,
+{
+    let marker = if show_checkboxes {
+        if selected.is_some_and(|selected| selected.contains(&index)) {
+            "[x]"
+        } else {
+            "[ ]"
+        }
+    } else {
+        "›"
+    };
+
+    let mut spans = vec![Span::styled(marker, accent_style()), Span::raw(" ")];
+    spans.push(Span::styled(
+        item.label.clone(),
+        Style::default().fg(Color::White),
+    ));
+    if let Some(caption) = &item.caption {
+        spans.push(Span::styled(format!("  {caption}"), muted_style()));
+    }
+
+    WidgetListItem::new(Line::from(spans))
+}
+
+fn draw_browser_detail<T>(frame: &mut Frame<'_>, area: Rect, state: &BrowserState<T>)
+where
+    T: Copy,
+{
+    let detail_height = usize::from(area.height.saturating_sub(2));
+    let detail = browser_detail_text(state, detail_height);
+    let detail = Paragraph::new(detail)
+        .block(panel("Details"))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(detail, area);
+}
+
+fn browser_detail_text<T>(state: &BrowserState<T>, detail_height: usize) -> Text<'static>
+where
+    T: Copy,
+{
+    state.current_item().map_or_else(
         || {
             Text::from(vec![
                 Line::styled("No selection", muted_style()),
@@ -455,13 +539,34 @@ fn draw_browser<T>(
                     .collect::<Vec<_>>(),
             )
         },
-    );
-    let detail = Paragraph::new(detail)
-        .block(panel("Details"))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(detail, body_sections[1]);
+    )
+}
 
-    let footer_line = state.notice.as_deref().map_or_else(
+fn draw_browser_footer<T>(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    detail_area: Rect,
+    state: &BrowserState<T>,
+    show_checkboxes: bool,
+) where
+    T: Copy,
+{
+    let detail_height = usize::from(detail_area.height.saturating_sub(2));
+    let footer = Paragraph::new(Text::from(vec![
+        browser_footer_line(state, show_checkboxes),
+        Line::raw(""),
+        Line::styled(state.status_summary(detail_height), caption_style()),
+    ]))
+    .block(panel("Keys"))
+    .wrap(Wrap { trim: false });
+    frame.render_widget(footer, area);
+}
+
+fn browser_footer_line<T>(state: &BrowserState<T>, show_checkboxes: bool) -> Line<'static>
+where
+    T: Copy,
+{
+    state.notice.as_deref().map_or_else(
         || {
             if show_checkboxes {
                 legend_line(&[
@@ -481,12 +586,7 @@ fn draw_browser<T>(
             }
         },
         |message| Line::styled(message.to_owned(), warning_style()),
-    );
-    let status_line = Line::styled(state.status_summary(detail_height), caption_style());
-    let footer = Paragraph::new(Text::from(vec![footer_line, Line::raw(""), status_line]))
-        .block(panel("Keys"))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(footer, sections[3]);
+    )
 }
 
 fn draw_text_prompt(frame: &mut Frame<'_>, prompt: &str, value: &str) {
@@ -633,8 +733,7 @@ fn accepts_text_input(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
 }
 
-#[allow(clippy::missing_const_for_fn)]
-fn is_cancel(key: &KeyEvent) -> bool {
+const fn is_cancel(key: &KeyEvent) -> bool {
     matches!(key.code, KeyCode::Esc)
         || matches!(
             key,
@@ -728,7 +827,6 @@ where
     notice: Option<String>,
 }
 
-#[allow(clippy::missing_const_for_fn)]
 impl<T> BrowserState<T>
 where
     T: Copy,
@@ -756,21 +854,21 @@ where
         self.refresh_matches();
     }
 
-    fn move_up(&mut self) {
+    const fn move_up(&mut self) {
         if self.cursor > 0 {
             self.cursor -= 1;
             self.detail_offset = 0;
         }
     }
 
-    fn move_down(&mut self) {
+    const fn move_down(&mut self) {
         if self.cursor + 1 < self.filtered_indices.len() {
             self.cursor += 1;
             self.detail_offset = 0;
         }
     }
 
-    fn page_up(&mut self, amount: usize) {
+    const fn page_up(&mut self, amount: usize) {
         self.cursor = self.cursor.saturating_sub(amount);
         self.detail_offset = 0;
     }
@@ -783,19 +881,19 @@ where
         self.detail_offset = 0;
     }
 
-    fn move_home(&mut self) {
+    const fn move_home(&mut self) {
         self.cursor = 0;
         self.detail_offset = 0;
     }
 
-    fn move_end(&mut self) {
+    const fn move_end(&mut self) {
         if !self.filtered_indices.is_empty() {
             self.cursor = self.filtered_indices.len() - 1;
             self.detail_offset = 0;
         }
     }
 
-    fn scroll_detail_up(&mut self, amount: usize) {
+    const fn scroll_detail_up(&mut self, amount: usize) {
         self.detail_offset = self.detail_offset.saturating_sub(amount);
     }
 

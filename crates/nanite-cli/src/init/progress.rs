@@ -312,9 +312,22 @@ impl From<&InitProgress> for InitProgressSnapshot {
     }
 }
 
-#[allow(clippy::too_many_lines)]
 fn render_progress_frame(frame: &mut Frame<'_>, snapshot: &InitProgressSnapshot) {
-    let area = frame.area();
+    let layout = progress_layout(frame.area());
+    draw_progress_header(frame, layout.header, snapshot);
+    draw_progress_steps(frame, layout.steps, snapshot);
+    draw_progress_detail(frame, layout.detail, snapshot);
+    draw_progress_footer(frame, layout.footer);
+}
+
+struct ProgressLayout {
+    header: ratatui::layout::Rect,
+    steps: ratatui::layout::Rect,
+    detail: ratatui::layout::Rect,
+    footer: ratatui::layout::Rect,
+}
+
+fn progress_layout(area: ratatui::layout::Rect) -> ProgressLayout {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -328,6 +341,19 @@ fn render_progress_frame(frame: &mut Frame<'_>, snapshot: &InitProgressSnapshot)
         .constraints([Constraint::Percentage(52), Constraint::Percentage(48)])
         .split(sections[1]);
 
+    ProgressLayout {
+        header: sections[0],
+        steps: body[0],
+        detail: body[1],
+        footer: sections[2],
+    }
+}
+
+fn draw_progress_header(
+    frame: &mut Frame<'_>,
+    area: ratatui::layout::Rect,
+    snapshot: &InitProgressSnapshot,
+) {
     let header = Paragraph::new(Text::from(vec![
         Line::from(vec![
             Span::styled("nanite init", title_style()),
@@ -347,111 +373,137 @@ fn render_progress_frame(frame: &mut Frame<'_>, snapshot: &InitProgressSnapshot)
         ),
     ]))
     .block(panel("Status"));
-    frame.render_widget(header, sections[0]);
+    frame.render_widget(header, area);
+}
 
+fn draw_progress_steps(
+    frame: &mut Frame<'_>,
+    area: ratatui::layout::Rect,
+    snapshot: &InitProgressSnapshot,
+) {
     let items = snapshot
         .steps
         .iter()
         .enumerate()
-        .map(|(index, step)| {
-            let icon = match step.status {
-                InitStepState::Pending => "○",
-                InitStepState::Active => "▶",
-                InitStepState::Done => "✓",
-                InitStepState::Failed => "×",
-            };
-            let icon_style = match step.status {
-                InitStepState::Pending => muted_style(),
-                InitStepState::Active => active_style(),
-                InitStepState::Done => done_style(),
-                InitStepState::Failed => failed_style(),
-            };
-            let detail = step
-                .detail
-                .as_deref()
-                .map(InitProgress::truncate_progress_detail)
-                .filter(|detail| !detail.is_empty());
-            let line = detail.map_or_else(
-                || {
-                    Line::from(vec![
-                        Span::styled(icon, icon_style),
-                        Span::raw(" "),
-                        Span::raw(step.label.clone()),
-                    ])
-                },
-                |detail| {
-                    Line::from(vec![
-                        Span::styled(icon, icon_style),
-                        Span::raw(" "),
-                        Span::raw(step.label.clone()),
-                        Span::styled(format!("  {detail}"), muted_style()),
-                    ])
-                },
-            );
-            let mut item = ListItem::new(line);
-            if Some(index) == snapshot.current_index {
-                item = item.style(Style::default().add_modifier(Modifier::BOLD));
-            }
-            item
-        })
+        .map(|(index, step)| progress_step_item(index, step, snapshot.current_index))
         .collect::<Vec<_>>();
     let list = List::new(items).block(panel("Steps"));
-    frame.render_widget(list, body[0]);
+    frame.render_widget(list, area);
+}
 
-    let detail = snapshot
-        .current_index
-        .and_then(|index| snapshot.steps.get(index));
-    let detail_lines = detail.map_or_else(
+fn progress_step_item(
+    index: usize,
+    step: &InitStepSnapshot,
+    current_index: Option<usize>,
+) -> ListItem<'static> {
+    let icon = match step.status {
+        InitStepState::Pending => "○",
+        InitStepState::Active => "▶",
+        InitStepState::Done => "✓",
+        InitStepState::Failed => "×",
+    };
+    let icon_style = match step.status {
+        InitStepState::Pending => muted_style(),
+        InitStepState::Active => active_style(),
+        InitStepState::Done => done_style(),
+        InitStepState::Failed => failed_style(),
+    };
+    let detail = step
+        .detail
+        .as_deref()
+        .map(InitProgress::truncate_progress_detail)
+        .filter(|detail| !detail.is_empty());
+    let line = detail.map_or_else(
         || {
-            vec![
-                Line::styled("Waiting for work", muted_style()),
-                Line::raw(""),
-                Line::styled("The selected bundle is ready to render.", muted_style()),
-            ]
+            Line::from(vec![
+                Span::styled(icon, icon_style),
+                Span::raw(" "),
+                Span::raw(step.label.clone()),
+            ])
         },
-        |step| {
-            let status = match step.status {
-                InitStepState::Pending => "Queued",
-                InitStepState::Active => "Working",
-                InitStepState::Done => "Done",
-                InitStepState::Failed => "Failed",
-            };
-            let status_style = match step.status {
-                InitStepState::Pending => muted_style(),
-                InitStepState::Active => active_style(),
-                InitStepState::Done => done_style(),
-                InitStepState::Failed => failed_style(),
-            };
-            let mut lines = vec![
-                Line::from(vec![
-                    Span::styled(status, status_style),
-                    Span::raw("  "),
-                    Span::raw(step.label.clone()),
-                ]),
-                Line::raw(""),
-            ];
-            if let Some(detail) = &step.detail {
-                lines.push(Line::raw(detail.clone()));
-                lines.push(Line::raw(""));
-            }
-            lines.push(Line::styled(
-                "Nanite will restore the terminal when this run completes.",
-                muted_style(),
-            ));
-            lines
+        |detail| {
+            Line::from(vec![
+                Span::styled(icon, icon_style),
+                Span::raw(" "),
+                Span::raw(step.label.clone()),
+                Span::styled(format!("  {detail}"), muted_style()),
+            ])
         },
     );
+
+    let mut item = ListItem::new(line);
+    if Some(index) == current_index {
+        item = item.style(Style::default().add_modifier(Modifier::BOLD));
+    }
+    item
+}
+
+fn draw_progress_detail(
+    frame: &mut Frame<'_>,
+    area: ratatui::layout::Rect,
+    snapshot: &InitProgressSnapshot,
+) {
+    let detail_lines = progress_detail_lines(snapshot);
     let detail = Paragraph::new(Text::from(detail_lines))
         .block(panel("Current step"))
         .wrap(Wrap { trim: false });
-    frame.render_widget(detail, body[1]);
+    frame.render_widget(detail, area);
+}
 
+fn progress_detail_lines(snapshot: &InitProgressSnapshot) -> Vec<Line<'static>> {
+    snapshot
+        .current_index
+        .and_then(|index| snapshot.steps.get(index))
+        .map_or_else(progress_idle_lines, progress_step_detail_lines)
+}
+
+fn progress_idle_lines() -> Vec<Line<'static>> {
+    vec![
+        Line::styled("Waiting for work", muted_style()),
+        Line::raw(""),
+        Line::styled("The selected bundle is ready to render.", muted_style()),
+    ]
+}
+
+fn progress_step_detail_lines(step: &InitStepSnapshot) -> Vec<Line<'static>> {
+    let status = match step.status {
+        InitStepState::Pending => "Queued",
+        InitStepState::Active => "Working",
+        InitStepState::Done => "Done",
+        InitStepState::Failed => "Failed",
+    };
+    let status_style = match step.status {
+        InitStepState::Pending => muted_style(),
+        InitStepState::Active => active_style(),
+        InitStepState::Done => done_style(),
+        InitStepState::Failed => failed_style(),
+    };
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled(status, status_style),
+            Span::raw("  "),
+            Span::raw(step.label.clone()),
+        ]),
+        Line::raw(""),
+    ];
+    if let Some(detail) = &step.detail {
+        lines.push(Line::raw(detail.clone()));
+        lines.push(Line::raw(""));
+    }
+    lines.push(Line::styled(
+        "Nanite will restore the terminal when this run completes.",
+        muted_style(),
+    ));
+    lines
+}
+
+fn draw_progress_footer(frame: &mut Frame<'_>, area: ratatui::layout::Rect) {
     let footer = Paragraph::new(Text::from(vec![Line::styled(
         "This live view stays open until the current render completes or fails.",
         caption_style(),
     )]))
     .block(panel("Info"));
-    frame.render_widget(footer, sections[2]);
+    frame.render_widget(footer, area);
 }
 
 fn panel(title: &str) -> Block<'_> {

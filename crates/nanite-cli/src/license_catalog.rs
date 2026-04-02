@@ -1,33 +1,30 @@
-#![allow(dead_code)]
-#![allow(clippy::redundant_pub_crate)]
-
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct LicenseRule {
-    pub(crate) tag: String,
-    pub(crate) label: String,
-    pub(crate) description: String,
+pub struct LicenseRule {
+    pub tag: String,
+    pub label: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct LicenseMetadata {
-    pub(crate) id: String,
-    pub(crate) spdx_id: String,
-    pub(crate) title: String,
-    pub(crate) nickname: Option<String>,
-    pub(crate) description: String,
-    pub(crate) how: String,
-    pub(crate) permissions: Vec<LicenseRule>,
-    pub(crate) conditions: Vec<LicenseRule>,
-    pub(crate) limitations: Vec<LicenseRule>,
-    pub(crate) featured: bool,
-    pub(crate) hidden: bool,
-    pub(crate) source_path: String,
-    pub(crate) raw_body: String,
-    pub(crate) template_body: String,
+pub struct LicenseMetadata {
+    pub id: String,
+    pub spdx_id: String,
+    pub title: String,
+    pub nickname: Option<String>,
+    pub description: String,
+    pub how: String,
+    pub permissions: Vec<LicenseRule>,
+    pub conditions: Vec<LicenseRule>,
+    pub limitations: Vec<LicenseRule>,
+    pub featured: bool,
+    pub hidden: bool,
+    pub source_path: String,
+    pub raw_body: String,
+    pub template_body: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -78,7 +75,7 @@ const PLACEHOLDER_MAP: &[(&str, &str)] = &[
     ("[login]", "{{ login }}"),
 ];
 
-pub(crate) fn parse_rule_lookup(source: &str) -> Result<BTreeMap<String, LicenseRule>, String> {
+pub fn parse_rule_lookup(source: &str) -> Result<BTreeMap<String, LicenseRule>, String> {
     let groups: RuleGroups = serde_yaml::from_str(source).map_err(|error| error.to_string())?;
     let mut lookup = BTreeMap::new();
 
@@ -101,7 +98,7 @@ pub(crate) fn parse_rule_lookup(source: &str) -> Result<BTreeMap<String, License
     Ok(lookup)
 }
 
-pub(crate) fn metadata_from_source(
+pub fn metadata_from_source(
     relative: &Path,
     source: &str,
     rule_lookup: &BTreeMap<String, LicenseRule>,
@@ -139,7 +136,7 @@ pub(crate) fn metadata_from_source(
     })
 }
 
-pub(crate) fn normalize_choosealicense_placeholders(body: &str) -> String {
+pub fn normalize_choosealicense_placeholders(body: &str) -> String {
     PLACEHOLDER_MAP
         .iter()
         .fold(body.to_owned(), |rendered, (source, target)| {

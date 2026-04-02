@@ -1,18 +1,15 @@
-#![allow(dead_code)]
-#![allow(clippy::redundant_pub_crate)]
-
 use std::path::Path;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct GitignoreMetadata {
-    pub(crate) id: String,
-    pub(crate) label: String,
-    pub(crate) group: String,
-    pub(crate) display: String,
-    pub(crate) source_path: String,
+pub struct GitignoreMetadata {
+    pub id: String,
+    pub label: String,
+    pub group: String,
+    pub display: String,
+    pub source_path: String,
 }
 
-pub(crate) fn metadata_from_relative_path(relative: &Path) -> Result<GitignoreMetadata, String> {
+pub fn metadata_from_relative_path(relative: &Path) -> Result<GitignoreMetadata, String> {
     let stem = relative
         .file_stem()
         .and_then(|value| value.to_str())

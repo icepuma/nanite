@@ -221,25 +221,33 @@ fn render_gitignore_entries(entries: &[CatalogEntry]) -> BuildResult<String> {
 fn render_license_entries(entries: &[LicenseCatalogEntry]) -> BuildResult<String> {
     let mut rendered = String::from("const BUILTIN_LICENSES: &[LicenseTemplate] = &[\n");
     for entry in entries {
-        rendered.push_str("    LicenseTemplate::new(");
-        write!(rendered, "{:?}, ", entry.id)?;
-        write!(rendered, "{:?}, ", entry.spdx_id)?;
-        write!(rendered, "{:?}, ", entry.title)?;
+        rendered.push_str("    LicenseTemplate {\n");
+        writeln!(rendered, "        id: {:?},", entry.id)?;
+        writeln!(rendered, "        spdx_id: {:?},", entry.spdx_id)?;
+        writeln!(rendered, "        title: {:?},", entry.title)?;
         match &entry.nickname {
-            Some(nickname) => write!(rendered, "Some({nickname:?}), ")?,
-            None => rendered.push_str("None, "),
+            Some(nickname) => writeln!(rendered, "        nickname: Some({nickname:?}),")?,
+            None => rendered.push_str("        nickname: None,\n"),
         }
-        write!(rendered, "{:?}, ", entry.description)?;
-        write!(rendered, "{:?}, ", entry.how)?;
+        writeln!(rendered, "        description: {:?},", entry.description)?;
+        writeln!(rendered, "        how: {:?},", entry.how)?;
+        rendered.push_str("        permissions: ");
         render_license_rules(&mut rendered, &entry.permissions)?;
-        rendered.push_str(", ");
+        rendered.push_str(",\n        conditions: ");
         render_license_rules(&mut rendered, &entry.conditions)?;
-        rendered.push_str(", ");
+        rendered.push_str(",\n        limitations: ");
         render_license_rules(&mut rendered, &entry.limitations)?;
-        write!(rendered, ", {}, {}, ", entry.featured, entry.hidden)?;
-        write!(rendered, "{:?}, ", entry.source_path)?;
-        write!(rendered, "{:?}, ", entry.raw_body)?;
-        writeln!(rendered, "{:?}),", entry.template_body)?;
+        writeln!(rendered, ",")?;
+        writeln!(rendered, "        featured: {},", entry.featured)?;
+        writeln!(rendered, "        hidden: {},", entry.hidden)?;
+        writeln!(rendered, "        source_path: {:?},", entry.source_path)?;
+        writeln!(rendered, "        raw_body: {:?},", entry.raw_body)?;
+        writeln!(
+            rendered,
+            "        template_body: {:?},",
+            entry.template_body
+        )?;
+        rendered.push_str("    },\n");
     }
     rendered.push_str("];\n");
     Ok(rendered)
