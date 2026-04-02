@@ -62,6 +62,14 @@ jobs:
           rustup override set "${RUST_TOOLCHAIN}"
           rustup target add "${{ matrix.target }}"
 
+      - name: Install CI tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Download vendored generator catalogs
+        run: just sync-vendored-files
+
       - name: Build release binary with cargo-zigbuild
         if: matrix.build_tool == 'zigbuild'
         run: cargo zigbuild --locked --release -p nanite-cli --target "${{ matrix.target }}"
