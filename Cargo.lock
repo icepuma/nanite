@@ -4076,7 +4076,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
 name = "nanite-agents"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "camino",
@@ -4088,7 +4088,7 @@ dependencies = [
 
 [[package]]
 name = "nanite-cli"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "arborium",
@@ -4118,7 +4118,7 @@ dependencies = [
 
 [[package]]
 name = "nanite-core"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "camino",
@@ -4134,7 +4134,7 @@ dependencies = [
 
 [[package]]
 name = "nanite-git"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "camino",
