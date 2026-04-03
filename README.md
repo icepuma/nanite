@@ -2,7 +2,7 @@
 
 [![Verify](https://github.com/icepuma/nanite/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/icepuma/nanite/actions/workflows/verify.yml)
 
-Nanite is a local CLI for running an AI-first repository workspace: it creates a fixed workspace layout, keeps repositories organized inside it, generates common project files, syncs agent skills, and searches code across the workspace.
+Nanite is a local CLI for managing a repository workspace: it organizes repos, generates common project files, searches code across the workspace, and keeps AI tool skills in sync.
 
 ## Quick Start
 
