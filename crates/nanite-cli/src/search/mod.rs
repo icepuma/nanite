@@ -10,6 +10,9 @@ use service::{RefreshMode, parse_search_request};
 pub fn command_search(context: &ContextState, args: SearchArgs) -> Result<()> {
     let SearchArgs {
         command,
+        web,
+        host,
+        port,
         query,
         repo,
         path,
@@ -19,8 +22,11 @@ pub fn command_search(context: &ContextState, args: SearchArgs) -> Result<()> {
         json,
     } = args;
 
+    if web {
+        return server::serve(context, &host, port);
+    }
+
     match command {
-        Some(SearchCommands::Serve { host, port }) => server::serve(context, &host, port),
         Some(SearchCommands::Index {
             command: SearchIndexCommands::Rebuild,
         }) => {
@@ -35,7 +41,7 @@ pub fn command_search(context: &ContextState, args: SearchArgs) -> Result<()> {
         None => {
             if query.as_deref().is_none_or(str::is_empty) {
                 bail!(
-                    "search requires a query; use 'nanite search <query>' or 'nanite search serve'"
+                    "search requires a query; use 'nanite search <query>' or 'nanite search --web'"
                 );
             }
             let request = parse_search_request(

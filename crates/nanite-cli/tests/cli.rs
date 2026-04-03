@@ -337,7 +337,7 @@ fn commands_fail_before_setup() {
     env.assert_unconfigured_failure(&["repo", "remove", "github.com/example/tool"]);
     env.assert_unconfigured_failure(&["repo", "import", "imports/toolbox"]);
     env.assert_unconfigured_failure(&["search", "workspace_root"]);
-    env.assert_unconfigured_failure(&["search", "serve"]);
+    env.assert_unconfigured_failure(&["search", "--web"]);
     env.assert_unconfigured_failure(&["search", "index", "rebuild"]);
     env.assert_unconfigured_failure(&["jumpto"]);
     env.assert_unconfigured_failure(&["shell", "init", "fish"]);

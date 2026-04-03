@@ -161,6 +161,16 @@ input[type="search"]::-webkit-search-cancel-button {
   pointer-events: none;
 }
 
+.btn-icon {
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  padding: 4px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* ---- progress panel ---- */
 
 .progress-panel {
@@ -508,11 +518,13 @@ input[type="search"]::-webkit-search-cancel-button {
 
 /* ---- popovers ---- */
 
+.search-help-shell,
 .reindex-shell,
 .viewer-open-shell {
   position: relative;
 }
 
+.search-help-popover,
 .reindex-popover,
 .viewer-open-popover {
   position: absolute;
@@ -533,6 +545,15 @@ input[type="search"]::-webkit-search-cancel-button {
   transition: opacity var(--speed), transform var(--speed);
 }
 
+.search-help-popover {
+  left: 50%;
+  right: auto;
+  width: min(340px, calc(100vw - 24px));
+  transform: translate(-50%, -3px);
+}
+
+.search-help-shell:hover .search-help-popover,
+.search-help-shell:focus-within .search-help-popover,
 .reindex-shell:hover .reindex-popover,
 .reindex-shell:focus-within .reindex-popover,
 .viewer-open-shell:hover .viewer-open-popover,
@@ -540,6 +561,11 @@ input[type="search"]::-webkit-search-cancel-button {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
+}
+
+.search-help-shell:hover .search-help-popover,
+.search-help-shell:focus-within .search-help-popover {
+  transform: translate(-50%, 0);
 }
 
 .popover-label {
@@ -588,6 +614,40 @@ input[type="search"]::-webkit-search-cancel-button {
   font-family: var(--mono);
   font-weight: 600;
   text-align: right;
+}
+
+.operator-list {
+  margin: 0;
+  display: grid;
+  gap: 0;
+  font-size: 12px;
+}
+
+.operator-list div {
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.operator-list dt,
+.operator-list dd {
+  margin: 0;
+}
+
+.operator-list dt {
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+.operator-list dd {
+  color: var(--ink-2);
+}
+
+.operator-list code,
+.popover-note code {
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 /* ---- animation ---- */

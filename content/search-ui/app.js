@@ -5,6 +5,8 @@ const state = {
   viewerHit: null,
 };
 
+const SEARCH_DEBOUNCE_MS = 250;
+
 const queryInput = document.getElementById("query");
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
@@ -35,6 +37,9 @@ const reindexStatsNoteEl = document.getElementById("reindex-stats-note");
 
 let searchTimer = null;
 let statusTimer = null;
+let searchController = null;
+let searchRunId = 0;
+let viewerRequestId = 0;
 
 boot().catch((error) => {
   showError(error);
@@ -48,7 +53,7 @@ async function boot() {
 
   if (hasActiveSearch()) {
     if (state.indexStatus?.ready) {
-      await runSearch();
+      await executeSearch();
     } else {
       showWaitingForIndex("Indexing workspace. Results will appear as soon as the first pass finishes.");
     }
@@ -63,14 +68,11 @@ async function boot() {
 function bindEvents() {
   formEl.addEventListener("submit", (event) => {
     event.preventDefault();
-    runSearch().catch(showError);
+    scheduleSearch({ immediate: true });
   });
 
   queryInput.addEventListener("input", () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      runSearch().catch(showError);
-    }, 180);
+    scheduleSearch();
   });
 
   reindexButton.addEventListener("click", async () => {
@@ -91,7 +93,7 @@ function bindEvents() {
   });
 
   viewerOpenButton.addEventListener("click", () => {
-    const hit = state.results[state.selectedIndex];
+    const hit = state.viewerHit;
     if (hit) {
       openInZed(hit).catch(showError);
     }
@@ -135,10 +137,21 @@ async function applyIndexStatus(payload) {
   scheduleStatusPoll(payload.indexing);
 
   if (payload.ready && (!wasReady || (wasIndexing && !payload.indexing)) && hasActiveSearch()) {
-    await runSearch();
+    await executeSearch();
   } else if (!hasActiveSearch()) {
     statusEl.textContent = idleStatusMessage();
   }
+}
+
+function scheduleSearch({ immediate = false } = {}) {
+  clearTimeout(searchTimer);
+  if (immediate) {
+    executeSearch().catch(handleAsyncError);
+    return;
+  }
+  searchTimer = setTimeout(() => {
+    executeSearch().catch(handleAsyncError);
+  }, SEARCH_DEBOUNCE_MS);
 }
 
 function scheduleStatusPoll(indexing) {
@@ -151,11 +164,13 @@ function scheduleStatusPoll(indexing) {
   }, 250);
 }
 
-async function runSearch() {
+async function executeSearch() {
   const params = buildSearchParams();
   syncLocation(params);
+  const runId = ++searchRunId;
 
   if (![...params.keys()].length) {
+    cancelActiveSearch();
     state.results = [];
     state.selectedIndex = -1;
     renderResults(emptySearchPayload());
@@ -165,41 +180,71 @@ async function runSearch() {
   }
 
   if (!state.indexStatus?.ready) {
+    cancelActiveSearch();
     showWaitingForIndex("Indexing workspace. Search will run once the first index finishes.");
     return;
   }
+
+  cancelActiveSearch();
+  const controller = new AbortController();
+  searchController = controller;
 
   statusEl.textContent = state.indexStatus?.indexing
     ? "Searching the current index while refresh continues…"
     : "Searching workspace…";
 
-  const response = await fetch(`/api/search?${params.toString()}`);
-  if (response.status === 409) {
-    await refreshStatus();
-    showWaitingForIndex("Indexing workspace. Search will run once the first index finishes.");
-    return;
-  }
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
+  try {
+    const response = await fetch(`/api/search?${params.toString()}`, {
+      signal: controller.signal,
+    });
+    if (runId !== searchRunId) {
+      return;
+    }
+    if (response.status === 409) {
+      await refreshStatus();
+      if (runId !== searchRunId) {
+        return;
+      }
+      showWaitingForIndex("Indexing workspace. Search will run once the first index finishes.");
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
 
-  const payload = await response.json();
-  state.results = payload.hits;
-  state.selectedIndex = payload.hits.length ? 0 : -1;
-  renderResults(payload);
+    const payload = await response.json();
+    if (runId !== searchRunId) {
+      return;
+    }
+    state.results = payload.hits;
+    state.selectedIndex = payload.hits.length ? 0 : -1;
+    renderResults(payload);
 
-  if (state.results.length) {
-    await loadFile(state.results[0]);
-  } else {
-    renderEmptyViewer("No matches for this query.");
+    if (state.results.length) {
+      await loadFile(state.results[0]);
+      if (runId !== searchRunId) {
+        return;
+      }
+    } else {
+      renderEmptyViewer("No matches for this query.");
+    }
+
+    const baseMessage = payload.total_hits
+      ? `Found ${payload.total_hits} matching lines.`
+      : "No matching lines.";
+    statusEl.textContent = state.indexStatus?.indexing
+      ? `${baseMessage} Refreshing in background.`
+      : baseMessage;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      return;
+    }
+    throw error;
+  } finally {
+    if (searchController === controller) {
+      searchController = null;
+    }
   }
-
-  const baseMessage = payload.total_hits
-    ? `Found ${payload.total_hits} matching lines.`
-    : "No matching lines.";
-  statusEl.textContent = state.indexStatus?.indexing
-    ? `${baseMessage} Refreshing in background.`
-    : baseMessage;
 }
 
 function showWaitingForIndex(message) {
@@ -261,6 +306,7 @@ function selectResult(index) {
 }
 
 async function loadFile(hit) {
+  const requestId = ++viewerRequestId;
   state.viewerHit = hit;
   renderZedControls();
   viewerTitleEl.textContent = hit.path;
@@ -272,6 +318,9 @@ async function loadFile(hit) {
     throw new Error(await response.text());
   }
   const payload = await response.json();
+  if (requestId !== viewerRequestId) {
+    return;
+  }
   renderFile(payload, hit.line_number);
 }
 
@@ -355,14 +404,14 @@ async function openInZed(hit) {
   const params = new URLSearchParams({
     repo: hit.repo,
     path: hit.path,
-    line: String(hit.line_number),
+    line: "1",
     column: "1",
   });
   const response = await fetch(`/api/open?${params.toString()}`, { method: "POST" });
   if (!response.ok) {
     throw new Error(await response.text());
   }
-  statusEl.textContent = `Opened ${hit.path} in Zed at line ${hit.line_number}.`;
+  statusEl.textContent = `Opened ${hit.path} in Zed at line 1.`;
 }
 
 function renderIndexStatus(payload) {
@@ -390,13 +439,13 @@ function renderIndexStatus(payload) {
 }
 
 function renderZedControls() {
-  const hasSelection = state.selectedIndex >= 0 && state.selectedIndex < state.results.length;
+  const hasSelection = Boolean(state.viewerHit);
   const available = isZedAvailable();
 
   viewerOpenShell.dataset.state = available ? "ready" : "missing";
   viewerOpenButton.disabled = !hasSelection || !available;
   viewerOpenButton.title = zedControlNote();
-  viewerOpenTitleEl.textContent = available ? "Open the selected file in Zed" : "Zed CLI unavailable";
+  viewerOpenTitleEl.textContent = available ? "Open the viewed file in Zed" : "Zed CLI unavailable";
   viewerOpenNoteEl.textContent = hasSelection
     ? zedControlNote()
     : `${zedActionSummary()} Select a result first.`;
@@ -507,6 +556,20 @@ function showError(error) {
   }
 }
 
+function cancelActiveSearch() {
+  if (searchController) {
+    searchController.abort();
+    searchController = null;
+  }
+}
+
+function handleAsyncError(error) {
+  if (error?.name === "AbortError") {
+    return;
+  }
+  showError(error);
+}
+
 function idleStatusMessage() {
   if (state.indexStatus?.error) {
     return state.indexStatus.error;
@@ -521,7 +584,7 @@ function isZedAvailable() {
 }
 
 function zedActionSummary() {
-  return "Opens the selected file in Zed, rooted at its repository, and jumps to the matching line without forcing a new workspace.";
+  return "Opens the viewed file in Zed, rooted at its repository, at line 1 without forcing a new workspace.";
 }
 
 function zedControlNote() {

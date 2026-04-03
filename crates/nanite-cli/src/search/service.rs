@@ -20,7 +20,7 @@ use tantivy::tokenizer::{
 };
 use tantivy::{Index, IndexReader, IndexWriter, Order, ReloadPolicy, Term, doc};
 
-const INDEX_MANIFEST_VERSION: u32 = 2;
+const INDEX_MANIFEST_VERSION: u32 = 3;
 const INDEX_WRITER_BYTES: usize = 50_000_000;
 const MAX_INDEXED_FILE_BYTES: u64 = 512 * 1024;
 const MAX_HIGHLIGHT_FILE_BYTES: u64 = 256 * 1024;
@@ -183,6 +183,8 @@ enum IndexedFileStatus {
 #[derive(Debug, Clone)]
 struct SearchSchema {
     repo: Field,
+    repo_terms: Field,
+    repo_ngram: Field,
     repo_label: Field,
     path_raw: Field,
     file_raw: Field,
@@ -327,7 +329,9 @@ impl SearchEngine {
         let bytes = fs::read(resolved.canonical_path.as_std_path())
             .with_context(|| format!("failed to read {}", resolved.canonical_path))?;
         let text = String::from_utf8_lossy(&bytes).into_owned();
-        let language = detect_language(resolved.requested_path.as_str()).map(str::to_owned);
+        let highlight_language =
+            detect_language(resolved.requested_path.as_str()).map(str::to_owned);
+        let language = indexed_language(resolved.requested_path.as_str());
         let line_count = text.lines().count().max(1);
 
         if metadata.len() > MAX_HIGHLIGHT_FILE_BYTES {
@@ -343,7 +347,7 @@ impl SearchEngine {
             });
         }
 
-        let highlighted_html = language
+        let highlighted_html = highlight_language
             .as_deref()
             .and_then(|language| self.highlighter.highlight(language, &text).ok());
         let plain_text = highlighted_html.is_none().then_some(text);
@@ -388,28 +392,24 @@ impl SearchEngine {
         let mut clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
         if !request.query.trim().is_empty() {
-            let mut parser = QueryParser::for_index(
-                &self.index,
-                vec![
-                    self.schema.content,
-                    self.schema.content_ngram,
-                    self.schema.path,
-                    self.schema.path_ngram,
-                    self.schema.file,
-                    self.schema.file_ngram,
-                ],
-            );
-            parser.set_conjunction_by_default();
-            clauses.push((Occur::Must, parser.parse_query(&request.query)?));
+            clauses.push((
+                Occur::Must,
+                self.build_text_query(
+                    &request.query,
+                    &[self.schema.content, self.schema.path, self.schema.file],
+                    &[
+                        self.schema.content_ngram,
+                        self.schema.path_ngram,
+                        self.schema.file_ngram,
+                    ],
+                )?,
+            ));
         }
 
         for repo in &request.repo_filters {
             clauses.push((
                 Occur::Must,
-                Box::new(TermQuery::new(
-                    Term::from_field_text(self.schema.repo, &repo.to_ascii_lowercase()),
-                    IndexRecordOption::Basic,
-                )),
+                self.build_text_query(repo, &[self.schema.repo_terms], &[self.schema.repo_ngram])?,
             ));
         }
 
@@ -424,17 +424,17 @@ impl SearchEngine {
         }
 
         for path in &request.path_filters {
-            let mut parser =
-                QueryParser::for_index(&self.index, vec![self.schema.path, self.schema.path_ngram]);
-            parser.set_conjunction_by_default();
-            clauses.push((Occur::Must, parser.parse_query(path)?));
+            clauses.push((
+                Occur::Must,
+                self.build_text_query(path, &[self.schema.path], &[self.schema.path_ngram])?,
+            ));
         }
 
         for file in &request.file_filters {
-            let mut parser =
-                QueryParser::for_index(&self.index, vec![self.schema.file, self.schema.file_ngram]);
-            parser.set_conjunction_by_default();
-            clauses.push((Occur::Must, parser.parse_query(file)?));
+            clauses.push((
+                Occur::Must,
+                self.build_text_query(file, &[self.schema.file], &[self.schema.file_ngram])?,
+            ));
         }
 
         if clauses.is_empty() {
@@ -442,6 +442,109 @@ impl SearchEngine {
         }
 
         Ok(Box::new(BooleanQuery::new(clauses)))
+    }
+
+    fn build_text_query(
+        &self,
+        input: &str,
+        term_fields: &[Field],
+        ngram_fields: &[Field],
+    ) -> Result<Box<dyn Query>> {
+        let mut token_clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+
+        for token in split_query_tokens(input) {
+            let normalized = normalize_query_token(&token);
+            if normalized.is_empty() {
+                continue;
+            }
+
+            let use_ngram_fields = !(has_wildcard_syntax(&token)
+                || (token.starts_with('"') && token.ends_with('"') && token.len() >= 2));
+            let term_query = self.parse_query_for_fields(&normalized, term_fields)?;
+            let token_query = if use_ngram_fields {
+                match Self::build_ngram_query(&normalized, ngram_fields) {
+                    Some(ngram_query) => Box::new(BooleanQuery::new(vec![
+                        (Occur::Should, term_query),
+                        (Occur::Should, ngram_query),
+                    ])) as Box<dyn Query>,
+                    None => term_query,
+                }
+            } else {
+                term_query
+            };
+
+            token_clauses.push((Occur::Must, token_query));
+        }
+
+        if token_clauses.is_empty() {
+            return Ok(Box::new(AllQuery));
+        }
+
+        if token_clauses.len() == 1 {
+            return Ok(token_clauses.pop().map_or_else(
+                || -> Box<dyn Query> { Box::new(AllQuery) },
+                |(_, query)| query,
+            ));
+        }
+
+        Ok(Box::new(BooleanQuery::new(token_clauses)))
+    }
+
+    fn parse_query_for_fields(&self, input: &str, fields: &[Field]) -> Result<Box<dyn Query>> {
+        if fields.is_empty() {
+            return Ok(Box::new(AllQuery));
+        }
+
+        let mut parser = QueryParser::for_index(&self.index, fields.to_vec());
+        parser.set_conjunction_by_default();
+        Ok(parser.parse_query(input)?)
+    }
+
+    fn build_ngram_query(input: &str, fields: &[Field]) -> Option<Box<dyn Query>> {
+        if fields.is_empty() {
+            return None;
+        }
+
+        let grams = trigram_terms(input);
+        if grams.is_empty() {
+            return None;
+        }
+
+        let mut field_clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+        for field in fields {
+            let term_clauses = grams
+                .iter()
+                .map(|gram| {
+                    (
+                        Occur::Must,
+                        Box::new(TermQuery::new(
+                            Term::from_field_text(*field, gram),
+                            IndexRecordOption::Basic,
+                        )) as Box<dyn Query>,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            let field_query: Box<dyn Query> = if term_clauses.len() == 1 {
+                term_clauses.into_iter().next().map_or_else(
+                    || -> Box<dyn Query> { Box::new(AllQuery) },
+                    |(_, query)| query,
+                )
+            } else {
+                Box::new(BooleanQuery::new(term_clauses))
+            };
+
+            field_clauses.push((Occur::Should, field_query));
+        }
+
+        Some(if field_clauses.len() == 1 {
+            field_clauses.into_iter().next().map_or_else(
+                || -> Box<dyn Query> { Box::new(AllQuery) },
+                |(_, query)| query,
+            )
+        } else {
+            Box::new(BooleanQuery::new(field_clauses))
+        })
     }
 
     fn hit_from_doc(
@@ -470,6 +573,10 @@ impl SearchSchema {
         let mut builder = Schema::builder();
 
         let repo = builder.add_text_field("repo", STRING | STORED);
+        let code_text = text_options("code_terms");
+        let ngram_text = text_options("ngram3");
+        let repo_terms = builder.add_text_field("repo_terms", code_text.clone());
+        let repo_ngram = builder.add_text_field("repo_ngram", ngram_text.clone());
         let repo_label = builder.add_text_field("repo_label", STORED);
         let path_raw = builder.add_text_field("path_raw", STORED);
         let file_raw = builder.add_text_field("file_raw", STORED);
@@ -484,8 +591,6 @@ impl SearchSchema {
         let sort_key = builder.add_text_field("sort_key", STRING | FAST);
         let text_raw = builder.add_text_field("text_raw", STORED);
 
-        let code_text = text_options("code_terms");
-        let ngram_text = text_options("ngram3");
         let exact_lower = builder.add_text_field("language", STRING);
         let content = builder.add_text_field("content", code_text.clone());
         let content_ngram = builder.add_text_field("content_ngram", ngram_text.clone());
@@ -499,6 +604,8 @@ impl SearchSchema {
             schema,
             Self {
                 repo,
+                repo_terms,
+                repo_ngram,
                 repo_label,
                 path_raw,
                 file_raw,
@@ -520,6 +627,8 @@ impl SearchSchema {
     fn from_schema(schema: &Schema) -> Result<Self> {
         Ok(Self {
             repo: schema.get_field("repo")?,
+            repo_terms: schema.get_field("repo_terms")?,
+            repo_ngram: schema.get_field("repo_ngram")?,
             repo_label: schema.get_field("repo_label")?,
             path_raw: schema.get_field("path_raw")?,
             file_raw: schema.get_field("file_raw")?,
@@ -561,7 +670,11 @@ pub fn parse_search_request(
     }
     SearchRequest {
         query: normalize_query_string(parts.query.trim()),
-        repo_filters: parts.repo_filters,
+        repo_filters: parts
+            .repo_filters
+            .into_iter()
+            .map(|value| normalize_query_string(&value))
+            .collect(),
         path_filters: parts
             .path_filters
             .into_iter()
@@ -572,7 +685,11 @@ pub fn parse_search_request(
             .into_iter()
             .map(|value| normalize_query_string(&value))
             .collect(),
-        lang_filters: parts.lang_filters,
+        lang_filters: parts
+            .lang_filters
+            .into_iter()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .collect(),
         limit,
     }
 }
@@ -840,6 +957,8 @@ where
             .language
             .clone()
             .unwrap_or_else(|| "text".to_owned());
+        let normalized_repo =
+            normalize_searchable_text(&format!("{} {}", file.manifest.repo_id, file.repo_label));
         let normalized_path = normalize_searchable_text(file.relative_path.as_str());
         let normalized_file = normalize_searchable_text(&file.file_name);
 
@@ -848,6 +967,8 @@ where
             let normalized_line = normalize_searchable_text(line);
             writer.add_document(doc!(
                 fields.repo => file.manifest.repo_id.clone(),
+                fields.repo_terms => normalized_repo.clone(),
+                fields.repo_ngram => normalized_repo.clone(),
                 fields.repo_label => file.repo_label.clone(),
                 fields.path_raw => file.relative_path.to_string(),
                 fields.file_raw => file.file_name.clone(),
@@ -1088,7 +1209,7 @@ where
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok());
         let modified_secs = modified.map_or(0, |duration| duration.as_secs());
         let modified_nanos = modified.map_or(0, |duration| duration.subsec_nanos());
-        let language = detect_language(relative.as_str()).map(str::to_owned);
+        let language = indexed_language(relative.as_str());
         let status;
         let text;
 
@@ -1227,6 +1348,15 @@ fn normalize_searchable_text(input: &str) -> String {
     }
 
     normalized
+}
+
+fn indexed_language(path: &str) -> Option<String> {
+    detect_language(path).map(str::to_owned).or_else(|| {
+        Utf8Path::new(path)
+            .extension()
+            .filter(|extension| !extension.is_empty())
+            .map(str::to_ascii_lowercase)
+    })
 }
 
 fn should_insert_boundary(index: usize, character: char, chars: &[char]) -> bool {
@@ -1374,6 +1504,26 @@ fn normalize_query_token(token: &str) -> String {
     }
 
     normalize_searchable_text(token).trim().to_owned()
+}
+
+fn has_wildcard_syntax(token: &str) -> bool {
+    token
+        .chars()
+        .any(|character| matches!(character, '*' | '?'))
+}
+
+fn trigram_terms(input: &str) -> Vec<String> {
+    let chars = input.chars().collect::<Vec<_>>();
+    if chars.len() < 3 {
+        return Vec::new();
+    }
+
+    chars
+        .windows(3)
+        .map(|window| window.iter().collect::<String>())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 #[cfg(test)]
@@ -1524,6 +1674,179 @@ mod tests {
             .unwrap();
         assert_eq!(camel_case.hits.len(), 1);
         assert_eq!(camel_case.hits[0].line_number, 2);
+    }
+
+    #[test]
+    fn inline_qualifiers_filter_by_repo_path_file_and_language() {
+        let harness = Harness::new();
+        let repo_a = harness.create_repo("github.com/icepuma/nanite");
+        let repo_b = harness.create_repo("github.com/intar-dev/intar-dev");
+        fs::create_dir_all(repo_a.join("src")).unwrap();
+        fs::create_dir_all(repo_b.join("agent/crates/intar-agent/proto/kino/v1")).unwrap();
+        fs::write(repo_a.join("src/lib.rs"), "pub fn workspace_root() {}\n").unwrap();
+        fs::write(
+            repo_b.join("agent/crates/intar-agent/proto/kino/v1/probes.proto"),
+            "message Probe {}\n",
+        )
+        .unwrap();
+
+        let open = SearchEngine::open(&harness.context, RefreshMode::ForceRebuild).unwrap();
+
+        let repo_label = open
+            .engine
+            .search(&parse_search_request(
+                "repo:intar-dev probe",
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+        assert_eq!(repo_label.hits.len(), 1);
+        assert_eq!(repo_label.hits[0].repo, "github.com/intar-dev/intar-dev");
+
+        let repo_id = open
+            .engine
+            .search(&parse_search_request(
+                "repo:github.com/intar-dev/intar-dev probe",
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+        assert_eq!(repo_id.hits.len(), 1);
+        assert_eq!(
+            repo_id.hits[0].path,
+            "agent/crates/intar-agent/proto/kino/v1/probes.proto"
+        );
+
+        let path = open
+            .engine
+            .search(&parse_search_request(
+                "path:agent/crates/intar-agent/proto/kino/v1/probes.proto probe",
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+        assert_eq!(path.hits.len(), 1);
+        assert_eq!(path.hits[0].repo, "github.com/intar-dev/intar-dev");
+
+        let file = open
+            .engine
+            .search(&parse_search_request(
+                "file:probes.proto probe",
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+        assert_eq!(file.hits.len(), 1);
+        assert_eq!(
+            file.hits[0].path,
+            "agent/crates/intar-agent/proto/kino/v1/probes.proto"
+        );
+
+        let lang = open
+            .engine
+            .search(&parse_search_request(
+                "lang:proto probe",
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+        assert_eq!(lang.hits.len(), 1);
+        assert_eq!(lang.hits[0].repo, "github.com/intar-dev/intar-dev");
+
+        let lang_case = open
+            .engine
+            .search(&parse_search_request(
+                "lang:Rust workspace_root",
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+        assert_eq!(lang_case.hits.len(), 1);
+        assert_eq!(lang_case.hits[0].repo, "github.com/icepuma/nanite");
+    }
+
+    #[test]
+    fn quoted_phrase_queries_avoid_ngram_phrase_searches() {
+        let harness = Harness::new();
+        let repo = harness.create_repo("github.com/intar-dev/intar-dev");
+        let path = repo.join("agent/crates/intar-agent/proto/kino/v1");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("probes.proto"), "message Probe Status {}\n").unwrap();
+
+        let open = SearchEngine::open(&harness.context, RefreshMode::ForceRebuild).unwrap();
+
+        let phrase = open
+            .engine
+            .search(&parse_search_request(
+                r#""probe status""#,
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+        assert_eq!(phrase.hits.len(), 1);
+
+        let quoted_path = open
+            .engine
+            .search(&parse_search_request(
+                r#"path:"agent/crates/intar-agent/proto/kino/v1/probes.proto" "probe status""#,
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+        assert_eq!(quoted_path.hits.len(), 1);
+        assert_eq!(
+            quoted_path.hits[0].path,
+            "agent/crates/intar-agent/proto/kino/v1/probes.proto"
+        );
+    }
+
+    #[test]
+    fn short_terms_with_repo_filters_do_not_build_ngram_phrase_queries() {
+        let harness = Harness::new();
+        let repo = harness.create_repo("github.com/intar-dev/kino");
+        fs::create_dir_all(repo.join("src")).unwrap();
+        fs::write(repo.join("src/lib.rs"), "const K: &str = \"k\";\n").unwrap();
+
+        let open = SearchEngine::open(&harness.context, RefreshMode::ForceRebuild).unwrap();
+        let response = open
+            .engine
+            .search(&parse_search_request(
+                "repo:kino k",
+                None,
+                None,
+                None,
+                None,
+                10,
+            ))
+            .unwrap();
+
+        assert_eq!(response.hits.len(), 1);
+        assert_eq!(response.hits[0].repo, "github.com/intar-dev/kino");
+        assert_eq!(response.hits[0].path, "src/lib.rs");
     }
 
     #[test]

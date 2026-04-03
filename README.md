@@ -1,85 +1,82 @@
 # nanite
 
-[![Verify](https://github.com/icepuma/nanite/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/icepuma/nanite/actions/workflows/verify.yml) [![Homebrew tap](https://img.shields.io/badge/Homebrew-tap-FBB040?logo=homebrew&logoColor=white)](https://github.com/icepuma/taps) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Verify](https://github.com/icepuma/nanite/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/icepuma/nanite/actions/workflows/verify.yml)
 
-Nanite is a local CLI for managing an AI-first repository workspace. It creates a fixed workspace layout for repositories, templates, and skills so cloning repos, rendering standard files, syncing agent setup, and moving between projects all happen through one repeatable workflow.
+Nanite is a local CLI for running an AI-first repository workspace: it creates a fixed workspace layout, keeps repositories organized inside it, generates common project files, syncs agent skills, and searches code across the workspace.
 
-## Install
+## Quick Start
 
-Install from the remote Homebrew tap:
+Install with Homebrew:
 
 ```sh
 brew tap icepuma/taps https://github.com/icepuma/taps
 brew install icepuma/taps/nanite
 ```
 
-Install from a local checkout with Cargo:
+Or install from a checkout:
 
 ```sh
 cargo install --locked --path crates/nanite-cli
 ```
 
-## Quick Start
-
-Create a workspace in an empty directory:
+Create a workspace, clone a repo into it, and jump there:
 
 ```sh
 nanite setup ~/workspace
-```
-
-Clone a repository into that workspace and jump to it:
-
-```sh
 nanite repo clone github.com/icepuma/nanite
 nanite repo refresh
-nanite jumpto nanite
+cd "$(nanite jumpto nanite)"
 ```
 
-## Core Features
+Search the workspace from the terminal or the local web UI:
 
-- Workspace bootstrap: `nanite setup` creates the expected `repos/`, `templates/`, and `skills/` layout.
-- Template rendering: `nanite init` renders a template into the current repository and supports `--force` when replacing an existing target file.
-- Gitignore generation: `nanite generate gitignore` builds a `.gitignore` from a searchable catalog vendored from `github/gitignore`, shows each template's upstream source path, and supports `--force` when replacing an existing file.
-- License generation: `nanite generate license` builds a `LICENSE` file from a searchable catalog downloaded from `github/choosealicense.com`, shows each template's SPDX id and upstream source path, and prompts only for missing fields.
-- Repository management: `nanite repo clone`, `nanite repo import`, `nanite repo remove`, and `nanite repo refresh` keep the workspace registry aligned with the repositories on disk.
-- Fast navigation: `nanite jumpto [QUERY]` selects a workspace repository and prints its path for shell wrappers or other tooling.
-- Agent setup: `nanite skill sync codex|claude [--apply]` syncs bundled Nanite-managed skills into supported agent install locations.
-- Fish shell integration: `nanite shell init fish` prints setup for wrappers and completions.
+```sh
+nanite search workspace_root
+nanite search --web
+```
 
 ## Usage
 
-A typical workflow looks like this:
+A typical flow looks like this:
 
 ```sh
 nanite setup ~/workspace
 nanite repo clone github.com/icepuma/nanite
-nanite repo refresh
-nanite jumpto nanite
-```
-
-Run `nanite init` inside a repository when you want to render a managed template into the current working tree.
-Run `nanite generate gitignore` in any project directory when you want to search bundled templates, inspect their upstream source paths, and render a `.gitignore`.
-Run `nanite generate license` in any project directory when you want to browse SPDX-backed license templates, inspect their upstream provenance, and render a `LICENSE`.
-
-For agent setup and shell integration:
-
-```sh
+cd "$(nanite jumpto nanite)"
 nanite generate gitignore
 nanite generate license
+nanite search 'repo:nanite workspace_root'
+nanite search --web
 nanite skill sync codex --apply
-nanite shell init fish | source
 ```
+
+Main commands:
+
+- `nanite repo clone|import|remove|refresh` manages repositories under the workspace.
+- `nanite jumpto <query>` prints a repo path for shell wrappers and fast navigation.
+- `nanite search <query>` searches indexed workspace code; `nanite search --web` serves the local search UI.
+- `nanite init` renders a managed template into the current repository.
+- `nanite generate gitignore|license` renders bundled file templates.
+- `nanite skill sync codex|claude --apply` installs Nanite-managed skills for supported agents.
+- `nanite shell init fish` prints shell integration and completions.
+
+Use `nanite --help` and `nanite <command> --help` for command-specific flags and examples.
 
 ## Development
 
-Run the workspace checks from the repository root:
+From the repository root:
 
 ```sh
-cargo test -q
+cargo build
+cargo run -- --help
 just verify
 ```
 
-Use `cargo build` and `cargo run -- --help` for local iteration while changing the CLI. If you want a locally installed binary from the workspace checkout, use `cargo install --locked --path crates/nanite-cli`. Download the generated-file catalogs locally with `just sync-vendored-files`; CI does the same before running `just verify`.
+Refresh the vendored catalogs with:
+
+```sh
+just sync-vendored-files
+```
 
 ## License
 

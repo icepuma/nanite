@@ -142,11 +142,11 @@ fn display_url(bound: SocketAddr) -> String {
 
 fn zed_help_text(zed_binary: &str) -> String {
     if command_available(zed_binary) {
-        "Opens the selected file in Zed, rooted at its repository, and jumps to the matching line without forcing a new workspace."
+        "Opens the viewed file in Zed, rooted at its repository, at line 1 without forcing a new workspace."
             .to_owned()
     } else {
         format!(
-            "Disabled because `{zed_binary}` was not found when the server started. Install the Zed CLI or set NANITE_ZED, then restart `nanite search serve`."
+            "Disabled because `{zed_binary}` was not found when the server started. Install the Zed CLI or set NANITE_ZED, then restart `nanite search --web`."
         )
     }
 }

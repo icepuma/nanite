@@ -170,11 +170,29 @@ pub enum ShellCommands {
     about = "Search code in the workspace",
     long_about = None,
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  nanite search \"workspace_root\"\n  nanite search --repo github.com/icepuma/nanite \"command_repo\"\n  nanite search serve\n  nanite search index rebuild"
+    after_help = "Examples:\n  nanite search \"workspace_root\"\n  nanite search --repo github.com/icepuma/nanite \"command_repo\"\n  nanite search --web\n  nanite search index rebuild"
 )]
 pub struct SearchArgs {
     #[command(subcommand)]
     pub command: Option<SearchCommands>,
+    #[arg(long, help = "Serve the local search UI")]
+    pub web: bool,
+    #[arg(
+        long,
+        default_value = "127.0.0.1",
+        value_name = "HOST",
+        help = "Host interface to bind for --web",
+        requires = "web"
+    )]
+    pub host: String,
+    #[arg(
+        long,
+        default_value_t = 0,
+        value_name = "PORT",
+        help = "Port to bind for --web; 0 chooses an ephemeral port",
+        requires = "web"
+    )]
+    pub port: u16,
     #[arg(value_name = "QUERY", help = "Search query")]
     pub query: Option<String>,
     #[arg(
@@ -210,23 +228,6 @@ pub struct SearchArgs {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum SearchCommands {
-    #[command(about = "Serve the local search UI", long_about = None)]
-    Serve {
-        #[arg(
-            long,
-            default_value = "127.0.0.1",
-            value_name = "HOST",
-            help = "Host interface to bind"
-        )]
-        host: String,
-        #[arg(
-            long,
-            default_value_t = 0,
-            value_name = "PORT",
-            help = "Port to bind; 0 chooses an ephemeral port"
-        )]
-        port: u16,
-    },
     #[command(about = "Manage the persistent search index", long_about = None)]
     Index {
         #[command(subcommand)]

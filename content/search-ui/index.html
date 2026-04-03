@@ -22,6 +22,51 @@
                 spellcheck="false"
               />
             </label>
+            <div class="search-help-shell">
+              <button
+                id="search-help"
+                class="btn btn-icon"
+                type="button"
+                aria-label="Search operators"
+                title="Search operators"
+              >
+                ?
+              </button>
+              <section class="search-help-popover">
+                <p class="popover-label">Search</p>
+                <p class="popover-title">Operators</p>
+                <dl class="operator-list">
+                  <div>
+                    <dt><code>repo:&lt;text&gt;</code></dt>
+                    <dd>Filter by repo id or repo label</dd>
+                  </div>
+                  <div>
+                    <dt><code>path:&lt;text&gt;</code></dt>
+                    <dd>Filter by repo-relative path</dd>
+                  </div>
+                  <div>
+                    <dt><code>file:&lt;text&gt;</code></dt>
+                    <dd>Filter by file name</dd>
+                  </div>
+                  <div>
+                    <dt><code>lang:&lt;text&gt;</code></dt>
+                    <dd>Filter by language or extension</dd>
+                  </div>
+                  <div>
+                    <dt><code>"exact phrase"</code></dt>
+                    <dd>Match adjacent terms in order</dd>
+                  </div>
+                  <div>
+                    <dt><code>*</code> <code>?</code></dt>
+                    <dd>Wildcard search on normal token fields</dd>
+                  </div>
+                </dl>
+                <p class="popover-note">
+                  Bare terms are all required. Example:
+                  <code>repo:kino path:agent/proto "probe status"</code>
+                </p>
+              </section>
+            </div>
             <div id="reindex-shell" class="reindex-shell">
               <button id="reindex" class="btn" type="button">Re-index</button>
               <section id="reindex-popover" class="reindex-popover" aria-live="polite">
@@ -102,10 +147,10 @@
               </button>
               <section id="viewer-open-popover" class="viewer-open-popover" aria-live="polite">
                 <p class="popover-label">Zed</p>
-                <p id="viewer-open-title" class="popover-title">Open the selected file in Zed</p>
+                <p id="viewer-open-title" class="popover-title">Open the viewed file in Zed</p>
                 <p id="viewer-open-note" class="popover-note">
-                  Opens the selected file in Zed, rooted at its repository, and jumps to the
-                  matching line without forcing a new workspace.
+                  Opens the viewed file in Zed, rooted at its repository, at line 1 without
+                  forcing a new workspace.
                 </p>
               </section>
             </div>
