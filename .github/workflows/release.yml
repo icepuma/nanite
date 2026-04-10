@@ -112,6 +112,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
       - name: Download release artifacts
         uses: actions/download-artifact@v8
         with:
@@ -136,3 +139,27 @@ jobs:
           overwrite_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           tag_name: ${{ github.ref_name }}
+
+      - name: Update Homebrew formula
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+          git checkout -B main origin/main
+
+          ./scripts/update-homebrew-formula.sh \
+            --tag "${TAG}" \
+            --checksums dist/SHA256SUMS
+
+          if git diff --quiet --exit-code -- Formula/nanite.rb; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/nanite.rb
+          git commit -m "chore(homebrew): update formula for ${TAG}"
+          git push origin HEAD:main

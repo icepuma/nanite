@@ -9,8 +9,8 @@ Nanite is a local CLI for managing a repository workspace: it organizes repos, g
 Install with Homebrew:
 
 ```sh
-brew tap icepuma/taps https://github.com/icepuma/taps
-brew install icepuma/taps/nanite
+brew tap icepuma/nanite https://github.com/icepuma/nanite
+brew install icepuma/nanite/nanite
 ```
 
 Or install from a checkout:
