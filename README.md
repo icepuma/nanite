@@ -57,7 +57,7 @@ Main commands:
 - `nanite search <query>` searches indexed workspace code; `nanite search --web` serves the local search UI.
 - `nanite init` renders a managed template into the current repository.
 - `nanite generate gitignore|license` renders bundled file templates.
-- `nanite skill sync codex|claude --apply` installs Nanite-managed skills for supported agents.
+- `nanite skill sync codex|claude --apply` installs Nanite-managed skills for supported agents (symlinks `~/.agents/skills/<slug>` for Codex, `~/.claude/skills/<slug>` for Claude Code).
 - `nanite shell init fish` prints shell integration and completions.
 
 Use `nanite --help` and `nanite <command> --help` for command-specific flags and examples.

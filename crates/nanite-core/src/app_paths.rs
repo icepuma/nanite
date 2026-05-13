@@ -90,8 +90,13 @@ impl AppPaths {
     }
 
     #[must_use]
-    pub fn codex_skills_root(&self) -> Utf8PathBuf {
-        self.codex_home.join("skills")
+    pub fn agents_skills_root(&self) -> Utf8PathBuf {
+        self.home.join(".agents/skills")
+    }
+
+    #[must_use]
+    pub fn claude_skills_root(&self) -> Utf8PathBuf {
+        self.home.join(".claude/skills")
     }
 
     #[must_use]
@@ -125,8 +130,8 @@ impl AppPaths {
     }
 
     #[must_use]
-    pub fn claude_plugin_seed_root(&self) -> Utf8PathBuf {
-        self.data.join("claude/plugins")
+    pub fn claude_render_root(&self) -> Utf8PathBuf {
+        self.data.join("rendered/claude")
     }
 }
 
@@ -183,7 +188,14 @@ mod tests {
 
         assert_eq!(paths.config_dir().as_str(), "/tmp/config");
         assert_eq!(paths.codex_home_root().as_str(), "/tmp/codex");
-        assert_eq!(paths.codex_skills_root().as_str(), "/tmp/codex/skills");
+        assert_eq!(
+            paths.agents_skills_root().as_str(),
+            "/tmp/home/.agents/skills"
+        );
+        assert_eq!(
+            paths.claude_skills_root().as_str(),
+            "/tmp/home/.claude/skills"
+        );
         assert_eq!(paths.data_dir().as_str(), "/tmp/data");
         assert_eq!(paths.state_dir().as_str(), "/tmp/state");
     }
@@ -214,13 +226,21 @@ mod tests {
         assert_eq!(paths.config_dir().as_str(), "/tmp/home/.config/nanite");
         assert_eq!(paths.codex_home_root().as_str(), "/tmp/home/.codex");
         assert_eq!(
-            paths.codex_skills_root().as_str(),
-            "/tmp/home/.codex/skills"
+            paths.agents_skills_root().as_str(),
+            "/tmp/home/.agents/skills"
+        );
+        assert_eq!(
+            paths.claude_skills_root().as_str(),
+            "/tmp/home/.claude/skills"
         );
         assert_eq!(paths.data_dir().as_str(), "/tmp/home/.local/share/nanite");
         assert_eq!(
-            paths.claude_plugin_seed_root().as_str(),
-            "/tmp/home/.local/share/nanite/claude/plugins"
+            paths.claude_render_root().as_str(),
+            "/tmp/home/.local/share/nanite/rendered/claude"
+        );
+        assert_eq!(
+            paths.codex_render_root().as_str(),
+            "/tmp/home/.local/share/nanite/rendered/codex"
         );
         assert_eq!(
             paths.search_index_root().as_str(),

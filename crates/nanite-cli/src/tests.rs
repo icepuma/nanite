@@ -32,7 +32,6 @@ fn fish_init_includes_wrapper_and_env_export() {
 
     assert!(script.contains("function jumpto"));
     assert!(script.contains("CODEX_HOME"));
-    assert!(script.contains("CLAUDE_CODE_PLUGIN_SEED_DIR"));
     assert!(script.contains("complete -c jumpto"));
 }
 

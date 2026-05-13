@@ -16,13 +16,10 @@ pub fn command_shell(context: &ContextState, command: ShellCommands) {
 
 pub fn render_fish_init(context: &ContextState) -> String {
     let escaped_codex_home = escape_fish_string(context.app_paths.codex_home_root().as_str());
-    let escaped_seed_dirs =
-        escape_fish_string(context.app_paths.claude_plugin_seed_root().as_str());
     let completions = generate_completion_script(Shell::Fish);
 
     format!(
         "set -gx CODEX_HOME \"{escaped_codex_home}\"\n\
-set -gx CLAUDE_CODE_PLUGIN_SEED_DIR \"{escaped_seed_dirs}\"\n\
 function jumpto --description 'cd into a Nanite repository'\n\
     set -l destination (nanite jumpto $argv)\n\
     or return $status\n\

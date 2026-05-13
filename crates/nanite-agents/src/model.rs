@@ -2,34 +2,10 @@ use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SkillProvider {
-    Codex,
-    Claude,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SkillMetadata {
     pub name: String,
     pub description: String,
-    #[serde(default)]
-    pub triggers: Vec<String>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub providers: ProviderOverrides,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct ProviderOverrides {
-    #[serde(default)]
-    pub claude: ClaudeOverrides,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct ClaudeOverrides {
-    #[serde(default)]
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,7 +13,6 @@ pub struct CanonicalSkill {
     pub slug: String,
     pub metadata: SkillMetadata,
     pub body: String,
-    pub raw_document: String,
     pub resources: BTreeMap<Utf8PathBuf, Vec<u8>>,
 }
 

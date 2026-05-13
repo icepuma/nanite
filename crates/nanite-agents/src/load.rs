@@ -41,7 +41,6 @@ pub fn load_skills(skills_root: &Utf8Path) -> Result<Vec<CanonicalSkill>> {
             slug,
             metadata: document.metadata,
             body: document.body,
-            raw_document: raw,
             resources,
         });
     }

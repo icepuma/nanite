@@ -5,18 +5,21 @@ use crate::fs::{
 use crate::model::{
     CanonicalSkill, FileDiff, SyncAction, SyncItem, SyncReason, SyncReport, SyncTarget,
 };
-use crate::render::{render_claude_skill, render_codex_skill};
+use crate::render::render_skill;
 use anyhow::{Context, Result};
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
+use std::collections::BTreeMap;
 use std::fs;
 
-/// Syncs rendered Codex skills into the render tree and install tree.
+/// Syncs rendered skills into a render tree and symlinks each one into the
+/// agent's user-skills install root (for example `~/.agents/skills` for Codex
+/// or `~/.claude/skills` for Claude Code).
 ///
 /// # Errors
 ///
 /// Returns an error when skill trees cannot be rendered, inspected, created, or
 /// written to disk.
-pub fn sync_codex(
+pub fn sync_skills(
     skills: &[CanonicalSkill],
     render_root: &Utf8Path,
     install_root: &Utf8Path,
@@ -27,10 +30,10 @@ pub fn sync_codex(
 
     let mut items = Vec::new();
     for skill in skills {
-        let rendered = render_codex_skill(skill);
+        let rendered = render_skill(skill);
         let render_path = render_root.join(&skill.slug);
         let install_path = install_root.join(&skill.slug);
-        let target = inspect_codex_target(&render_path, &install_path, &rendered)?;
+        let target = inspect_target(&render_path, &install_path, &rendered)?;
         let action = classify_sync(std::slice::from_ref(&target));
         if apply && action != SyncAction::Unchanged {
             write_rendered_tree(&render_path, &rendered)?;
@@ -47,49 +50,10 @@ pub fn sync_codex(
     Ok(SyncReport { items })
 }
 
-/// Syncs rendered Claude plugin skills into each configured plugin seed directory.
-///
-/// # Errors
-///
-/// Returns an error when target directories cannot be inspected, created, or
-/// written to disk.
-pub fn sync_claude(
-    skills: &[CanonicalSkill],
-    plugin_seed_dirs: &[Utf8PathBuf],
-    apply: bool,
-) -> Result<SyncReport> {
-    let mut items = Vec::new();
-    for skill in skills {
-        let rendered = render_claude_skill(skill);
-        let mut targets = Vec::new();
-
-        for seed_dir in plugin_seed_dirs {
-            let target = seed_dir.join("nanite-skills/skills").join(&skill.slug);
-            targets.push(inspect_directory_target(&target, &rendered)?);
-        }
-
-        let action = classify_sync(&targets);
-
-        if apply {
-            for seed_dir in plugin_seed_dirs {
-                write_claude_plugin(seed_dir, skill, &rendered)?;
-            }
-        }
-
-        items.push(SyncItem {
-            slug: skill.slug.clone(),
-            action,
-            targets,
-        });
-    }
-
-    Ok(SyncReport { items })
-}
-
-fn inspect_codex_target(
+fn inspect_target(
     render_path: &Utf8Path,
     install_path: &Utf8Path,
-    rendered: &std::collections::BTreeMap<Utf8PathBuf, Vec<u8>>,
+    rendered: &BTreeMap<camino::Utf8PathBuf, Vec<u8>>,
 ) -> Result<SyncTarget> {
     let mut reasons = Vec::new();
 
@@ -145,33 +109,6 @@ fn inspect_codex_target(
     })
 }
 
-fn inspect_directory_target(
-    target: &Utf8Path,
-    rendered: &std::collections::BTreeMap<Utf8PathBuf, Vec<u8>>,
-) -> Result<SyncTarget> {
-    let mut reasons = Vec::new();
-
-    match existing_target_kind(target)? {
-        ExistingTargetKind::Missing => {
-            reasons.push(SyncReason::Missing {
-                diff: FileDiff::from_rendered(rendered),
-            });
-        }
-        ExistingTargetKind::Directory => {
-            let diff = diff_existing_tree(target, rendered)?;
-            if !diff.is_empty() {
-                reasons.push(SyncReason::ContentChanged { diff });
-            }
-        }
-        ExistingTargetKind::NotDirectory => reasons.push(SyncReason::NotDirectory),
-    }
-
-    Ok(SyncTarget {
-        path: target.to_owned(),
-        reasons,
-    })
-}
-
 fn classify_sync(targets: &[SyncTarget]) -> SyncAction {
     if targets.iter().all(|target| target.reasons.is_empty()) {
         return SyncAction::Unchanged;
@@ -185,30 +122,4 @@ fn classify_sync(targets: &[SyncTarget]) -> SyncAction {
     }
 
     SyncAction::Override
-}
-
-fn write_claude_plugin(
-    seed_dir: &Utf8Path,
-    skill: &CanonicalSkill,
-    rendered: &std::collections::BTreeMap<Utf8PathBuf, Vec<u8>>,
-) -> Result<()> {
-    let plugin_root = seed_dir.join("nanite-skills");
-    let manifest_dir = plugin_root.join(".claude-plugin");
-    let skill_dir = plugin_root.join("skills").join(&skill.slug);
-
-    fs::create_dir_all(&manifest_dir)
-        .with_context(|| format!("failed to create {manifest_dir}"))?;
-    fs::create_dir_all(plugin_root.join("skills"))
-        .with_context(|| format!("failed to create {}", plugin_root.join("skills")))?;
-    fs::write(
-        manifest_dir.join("plugin.json"),
-        serde_json::to_vec_pretty(&serde_json::json!({
-            "name": "nanite-skills",
-            "description": "Nanite-managed skill bundle",
-            "author": { "name": "Nanite" }
-        }))?,
-    )
-    .with_context(|| format!("failed to write {}", manifest_dir.join("plugin.json")))?;
-
-    write_rendered_tree(&skill_dir, rendered)
 }

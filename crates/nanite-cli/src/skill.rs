@@ -2,7 +2,7 @@ use crate::cli::{ProviderArg, SkillCommands};
 use crate::context::ContextState;
 use anyhow::Result;
 use nanite_agents::{
-    FileDiff, SyncAction, SyncReason, SyncReport, SyncTarget, load_skills, sync_claude, sync_codex,
+    FileDiff, SyncAction, SyncReason, SyncReport, SyncTarget, load_skills, sync_skills,
 };
 use std::io::{self, IsTerminal};
 
@@ -10,18 +10,17 @@ pub fn command_skill(context: &ContextState, command: SkillCommands) -> Result<(
     match command {
         SkillCommands::Sync { provider, apply } => {
             let skills = load_skills(context.workspace_paths.skills_root())?;
-            let report = match provider {
-                ProviderArg::Codex => sync_codex(
-                    &skills,
-                    &context.app_paths.codex_render_root(),
-                    &context.app_paths.codex_skills_root(),
-                    apply,
-                )?,
-                ProviderArg::Claude => {
-                    let seed_root = context.app_paths.claude_plugin_seed_root();
-                    sync_claude(&skills, std::slice::from_ref(&seed_root), apply)?
-                }
+            let (render_root, install_root) = match provider {
+                ProviderArg::Codex => (
+                    context.app_paths.codex_render_root(),
+                    context.app_paths.agents_skills_root(),
+                ),
+                ProviderArg::Claude => (
+                    context.app_paths.claude_render_root(),
+                    context.app_paths.claude_skills_root(),
+                ),
             };
+            let report = sync_skills(&skills, &render_root, &install_root, apply)?;
             print_sync_report(provider, apply, &report);
         }
     }

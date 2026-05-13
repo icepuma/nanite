@@ -71,7 +71,6 @@ log="${NANITE_PROVIDER_LOG:-}"
 if [ -n "$log" ]; then
     printf '%s %s\n' "$(basename "$0")" "$all_args" >> "$log"
     printf 'CODEX_HOME=%s\n' "${CODEX_HOME:-}" >> "$log"
-    printf 'CLAUDE_CODE_PLUGIN_SEED_DIR=%s\n' "${CLAUDE_CODE_PLUGIN_SEED_DIR:-}" >> "$log"
     printf 'PROMPT_START\n%s\nPROMPT_END\n' "$prompt" >> "$log"
 fi
 mode="${NANITE_FAKE_PROVIDER_MODE:-write}"
@@ -706,7 +705,8 @@ fn repo_remove_requires_yes_when_not_interactive() {
 fn skills_sync_is_dry_run_by_default_and_applies_when_requested() {
     let env = TestEnv::new();
     env.setup();
-    let codex_conventional_commits = env.home_dir.join(".codex/skills/conventional-commits");
+    let codex_conventional_commits = env.home_dir.join(".agents/skills/conventional-commits");
+    let claude_conventional_commits = env.home_dir.join(".claude/skills/conventional-commits");
 
     env.command()
         .args(["skill", "sync", "codex"])
@@ -730,11 +730,8 @@ fn skills_sync_is_dry_run_by_default_and_applies_when_requested() {
             .join("agents/openai.yaml")
             .exists()
     );
-    assert!(
-        fs::read_to_string(codex_conventional_commits.join("SKILL.md"))
-            .unwrap()
-            .starts_with("---\n")
-    );
+    let codex_skill_md = fs::read_to_string(codex_conventional_commits.join("SKILL.md")).unwrap();
+    assert!(codex_skill_md.starts_with("---\nname: conventional-commits\n"));
 
     env.command()
         .args(["skill", "sync", "claude", "--apply"])
@@ -742,9 +739,10 @@ fn skills_sync_is_dry_run_by_default_and_applies_when_requested() {
         .success()
         .stdout(predicates::str::contains("sync claude skills"))
         .stdout(predicates::str::contains("[create] conventional-commits"));
+    assert!(claude_conventional_commits.join("SKILL.md").exists());
     assert!(
-        env.data_dir
-            .join("claude/plugins/nanite-skills/skills/conventional-commits/SKILL.md")
+        claude_conventional_commits
+            .join("agents/openai.yaml")
             .exists()
     );
 }
@@ -1005,7 +1003,6 @@ fn shell_init_fish_outputs_complete_setup() {
         .success()
         .stdout(predicates::str::contains("CODEX_HOME"))
         .stdout(predicates::str::contains("function jumpto"))
-        .stdout(predicates::str::contains("CLAUDE_CODE_PLUGIN_SEED_DIR"))
         .stdout(predicates::str::contains("complete -c jumpto"))
         .stdout(predicates::str::contains("nanite __complete-repo-remove"));
 }
