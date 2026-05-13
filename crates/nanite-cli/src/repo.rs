@@ -178,12 +178,8 @@ fn render_clone_progress(frame: &mut Frame<'_>, snapshot: &CloneProgressSnapshot
     frame.render_widget(header, sections[0]);
 
     let percent = snapshot.total.and_then(|total| {
-        if total == 0 {
-            None
-        } else {
-            let percent = snapshot.position.saturating_mul(100) / total;
-            Some(u16::try_from(percent.min(100)).unwrap_or(100))
-        }
+        let percent = snapshot.position.saturating_mul(100).checked_div(total)?;
+        Some(u16::try_from(percent.min(100)).unwrap_or(100))
     });
     if let (Some(total), Some(percent)) = (snapshot.total, percent) {
         let gauge = Gauge::default()

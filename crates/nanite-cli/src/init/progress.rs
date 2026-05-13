@@ -100,9 +100,7 @@ impl InitProgress {
         });
 
         let mode = if io::stderr().is_terminal() {
-            StatusTerminal::stderr()
-                .map(InitProgressMode::Tty)
-                .unwrap_or(InitProgressMode::Plain)
+            StatusTerminal::stderr().map_or(InitProgressMode::Plain, InitProgressMode::Tty)
         } else {
             InitProgressMode::Plain
         };

@@ -786,10 +786,7 @@ mod tests {
         assert!(body.contains("\"column\":3"));
 
         for _ in 0..300 {
-            if fs::metadata(output_path.as_std_path())
-                .map(|metadata| metadata.len() > 0)
-                .unwrap_or(false)
-            {
+            if fs::metadata(output_path.as_std_path()).is_ok_and(|metadata| metadata.len() > 0) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
