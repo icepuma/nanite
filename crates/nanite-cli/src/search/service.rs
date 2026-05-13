@@ -2018,11 +2018,11 @@ mod tests {
         let harness = Harness::new();
         let repo = harness.create_repo("github.com/icepuma/nanite");
         fs::create_dir_all(repo.join("src")).unwrap();
-        fs::create_dir_all(repo.join("proto/kino/v1")).unwrap();
+        fs::create_dir_all(repo.join("notes")).unwrap();
         fs::write(repo.join("src/lib.rs"), "fn main() {}\n").unwrap();
         fs::write(
-            repo.join("proto/kino/v1/probes.proto"),
-            "syntax = \"proto3\";\nmessage Probe {}\n",
+            repo.join("notes/handoff.notes"),
+            "free-form notes\nmessage Probe\n",
         )
         .unwrap();
 
@@ -2043,7 +2043,7 @@ mod tests {
 
         let plain_text_view = open
             .engine
-            .file_view("github.com/icepuma/nanite", "proto/kino/v1/probes.proto")
+            .file_view("github.com/icepuma/nanite", "notes/handoff.notes")
             .unwrap();
         assert!(plain_text_view.highlighted_html.is_none());
         assert!(
