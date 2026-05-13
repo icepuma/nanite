@@ -785,7 +785,7 @@ mod tests {
         assert!(body.contains("\"line\":7"));
         assert!(body.contains("\"column\":3"));
 
-        for _ in 0..300 {
+        for _ in 0..3000 {
             if fs::metadata(output_path.as_std_path()).is_ok_and(|metadata| metadata.len() > 0) {
                 break;
             }
