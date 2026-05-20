@@ -60,7 +60,7 @@ sync-license-files:
     printf 'license files synced: %s\n' "$count"
     printf 'rules file: %s\n' "$destination_dir/_data/rules.yml"
 
-verify:
+verify: verify-plugins
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::cargo -A clippy::multiple-crate-versions
     cargo clippy --workspace --all-features --lib --bins -- -D clippy::unwrap_used -D clippy::expect_used -A clippy::multiple-crate-versions
@@ -68,3 +68,24 @@ verify:
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps
     cargo test --workspace --all-features --doc
     cargo deny check
+
+build-plugins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rustup target add wasm32-wasip2 >/dev/null 2>&1 || true
+    (cd plugins && cargo build --release -p github-org -p gitlab-group)
+    cp plugins/target/wasm32-wasip2/release/github_org.wasm \
+       content/plugins/github-org.wasm
+    cp plugins/target/wasm32-wasip2/release/gitlab_group.wasm \
+       content/plugins/gitlab-group.wasm
+    printf 'plugins built and copied to content/plugins/\n'
+
+verify-plugins: build-plugins
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! git diff --quiet content/plugins; then
+      printf 'content/plugins/ is out of date — commit the rebuilt .wasm files\n' >&2
+      git diff --stat content/plugins >&2
+      exit 1
+    fi
+    printf 'content/plugins/ matches sources\n'

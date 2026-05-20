@@ -251,6 +251,179 @@ pub fn confirm(prompt: &str, default: bool) -> Result<bool> {
     }
 }
 
+/// Like [`confirm`], but shows a scrollable list of items above the
+/// yes/no row. Use ↑/↓ (or j/k), PageUp/PageDown, Home/End to scroll;
+/// ←/→ (or h/l) toggle the focused answer; y/n answer directly;
+/// Enter confirms; Esc cancels (returns Ok(false)).
+pub fn confirm_with_listing(prompt: &str, items: &[String], default: bool) -> Result<bool> {
+    let mut terminal = TerminalSession::stdout()?;
+    let mut accepted = default;
+    let mut state = ListState::default();
+    if !items.is_empty() {
+        state.select(Some(0));
+    }
+    let len = items.len();
+
+    loop {
+        terminal.draw(|frame| {
+            draw_confirm_with_listing(frame, prompt, items, &mut state, accepted);
+        })?;
+
+        match read_key()? {
+            key if is_cancel(&key) => return Ok(false),
+            KeyEvent {
+                code: KeyCode::Up, ..
+            }
+            | KeyEvent {
+                code: KeyCode::Char('k'),
+                ..
+            } if len > 0 => {
+                let cur = state.selected().unwrap_or(0);
+                state.select(Some(cur.saturating_sub(1)));
+            }
+            KeyEvent {
+                code: KeyCode::Down,
+                ..
+            }
+            | KeyEvent {
+                code: KeyCode::Char('j'),
+                ..
+            } if len > 0 => {
+                let cur = state.selected().unwrap_or(0);
+                state.select(Some((cur + 1).min(len - 1)));
+            }
+            KeyEvent {
+                code: KeyCode::PageUp,
+                ..
+            } if len > 0 => {
+                let cur = state.selected().unwrap_or(0);
+                state.select(Some(cur.saturating_sub(10)));
+            }
+            KeyEvent {
+                code: KeyCode::PageDown,
+                ..
+            } if len > 0 => {
+                let cur = state.selected().unwrap_or(0);
+                state.select(Some((cur + 10).min(len - 1)));
+            }
+            KeyEvent {
+                code: KeyCode::Home,
+                ..
+            } if len > 0 => {
+                state.select(Some(0));
+            }
+            KeyEvent {
+                code: KeyCode::End, ..
+            } if len > 0 => {
+                state.select(Some(len - 1));
+            }
+            KeyEvent {
+                code: KeyCode::Left,
+                ..
+            }
+            | KeyEvent {
+                code: KeyCode::Char('h'),
+                ..
+            } => accepted = true,
+            KeyEvent {
+                code: KeyCode::Right,
+                ..
+            }
+            | KeyEvent {
+                code: KeyCode::Char('l'),
+                ..
+            } => accepted = false,
+            KeyEvent {
+                code: KeyCode::Char('y'),
+                ..
+            } => return Ok(true),
+            KeyEvent {
+                code: KeyCode::Char('n'),
+                ..
+            } => return Ok(false),
+            KeyEvent {
+                code: KeyCode::Enter,
+                ..
+            } => return Ok(accepted),
+            _ => {}
+        }
+    }
+}
+
+fn draw_confirm_with_listing(
+    frame: &mut Frame<'_>,
+    prompt: &str,
+    items: &[String],
+    state: &mut ListState,
+    accepted: bool,
+) {
+    let area = frame.area();
+    frame.render_widget(Clear, area);
+
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(5),
+            Constraint::Length(3),
+            Constraint::Length(3),
+        ])
+        .split(area);
+
+    let header = Paragraph::new(Line::styled(prompt, title_style())).block(panel("Confirm"));
+    frame.render_widget(header, sections[0]);
+
+    let total = items.len();
+    let width = total.to_string().len();
+    let list_items: Vec<WidgetListItem<'_>> = items
+        .iter()
+        .enumerate()
+        .map(|(idx, name)| {
+            WidgetListItem::new(Line::raw(format!(
+                "{:>width$}. {name}",
+                idx + 1,
+                width = width,
+            )))
+        })
+        .collect();
+
+    let list_title = format!("Repositories ({total})");
+    let list = List::new(list_items)
+        .block(panel(&list_title))
+        .highlight_style(highlight_style())
+        .highlight_symbol("> ");
+    frame.render_stateful_widget(list, sections[1], state);
+
+    let yes = if accepted { "[ Yes ]" } else { "  Yes  " };
+    let no = if accepted { "  No  " } else { "[ No ]" };
+    let answers = Paragraph::new(Line::from(vec![
+        if accepted {
+            Span::styled(yes.to_owned(), highlight_style())
+        } else {
+            Span::styled(yes.to_owned(), muted_style())
+        },
+        Span::raw("   "),
+        if accepted {
+            Span::styled(no.to_owned(), muted_style())
+        } else {
+            Span::styled(no.to_owned(), highlight_style())
+        },
+    ]))
+    .block(panel("Choice"));
+    frame.render_widget(answers, sections[2]);
+
+    let footer = Paragraph::new(legend_line(&[
+        ("↑↓/jk", "scroll"),
+        ("PgUp/PgDn", "jump"),
+        ("←→/hl", "switch"),
+        ("y/n", "answer"),
+        ("enter", "confirm"),
+        ("esc", "cancel"),
+    ]))
+    .block(panel("Keys"));
+    frame.render_widget(footer, sections[3]);
+}
+
 fn choose_from_browser<T>(title: &str, subtitle: &str, items: Vec<BrowserItem<T>>) -> Result<T>
 where
     T: Copy,

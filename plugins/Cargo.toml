@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = ["shared", "github-org", "gitlab-group"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+publish = false
+rust-version = "1.95"
+version = "0.1.0"
+
+[workspace.dependencies]
+plugin-shared = { path = "shared" }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
+url = "=2.5.8"
+waki = { version = "=0.5.1", features = ["json"] }
+wit-bindgen = "=0.57.1"
+
+[workspace.lints.rust]
+# wit-bindgen-generated code requires `unsafe` for ABI marshalling, so
+# we cannot `forbid` it here. Hand-written code in plugins must still
+# avoid `unsafe`; this is enforced by review, not the linter.
+unnameable_types = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+panic = "abort"
+strip = true

@@ -70,18 +70,23 @@ fn init_progress_renders_readme_checklist() {
 }
 
 #[test]
-fn repo_clone_accepts_force_flag() {
-    let cli = Cli::parse_from(["nanite", "repo", "clone", "--force", "owner/repo"]);
+fn repo_clone_takes_only_remote() {
+    let cli = Cli::parse_from(["nanite", "repo", "clone", "owner/repo"]);
 
     match cli.command {
         crate::cli::Commands::Repo {
-            command: crate::cli::RepoCommands::Clone { remote, force },
+            command: crate::cli::RepoCommands::Clone { remote },
         } => {
             assert_eq!(remote, "owner/repo");
-            assert!(force);
         }
         _ => panic!("expected repo clone command"),
     }
+}
+
+#[test]
+fn repo_clone_rejects_unknown_flag() {
+    let parsed = Cli::try_parse_from(["nanite", "repo", "clone", "--force", "owner/repo"]);
+    assert!(parsed.is_err(), "--force should no longer be accepted");
 }
 
 #[test]

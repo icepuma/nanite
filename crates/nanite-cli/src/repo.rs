@@ -1,3 +1,4 @@
+use crate::bulk::{resolve_probe, run_bulk_clone};
 use crate::cli::RepoCommands;
 use crate::context::ContextState;
 use crate::ui::{StatusTerminal, confirm};
@@ -5,9 +6,10 @@ use crate::util::{load_registry, resolve_cli_path};
 use anyhow::{Result, bail};
 use camino::Utf8Path;
 use nanite_git::{
-    CloneProgressDisplay, SharedCloneProgressDisplay, clone_repo, import_repo, remove_repo,
-    resolve_repo_remove_target, scan_workspace,
+    CloneProgressDisplay, SharedCloneProgressDisplay, clone_repo, destination_for, import_repo,
+    parse_remote, remove_repo, resolve_repo_remove_target, scan_workspace,
 };
+use nanite_plugins::{Dispatch, detect_bulk_from};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
@@ -20,18 +22,8 @@ pub fn command_repo(context: &ContextState, command: RepoCommands) -> Result<()>
     let mut registry = load_registry(&context.app_paths)?;
 
     match command {
-        RepoCommands::Clone { remote, force } => {
-            let progress = clone_progress_display(&remote)?;
-            let result = clone_repo(
-                context.workspace_paths.repos_root(),
-                &remote,
-                force,
-                progress.clone(),
-            );
-            drop(progress);
-            let record = result?;
-            println!("cloned {}", record.path);
-            registry.upsert(record);
+        RepoCommands::Clone { remote } => {
+            command_clone(context, &mut registry, &remote)?;
         }
         RepoCommands::Import { source } => {
             let source = resolve_cli_path(&source)?;
@@ -65,7 +57,80 @@ pub fn command_repo(context: &ContextState, command: RepoCommands) -> Result<()>
     registry.save(&context.app_paths.registry_file())
 }
 
-fn clone_progress_display(remote: &str) -> Result<Option<SharedCloneProgressDisplay>> {
+fn command_clone(
+    context: &ContextState,
+    registry: &mut nanite_core::Registry,
+    remote: &str,
+) -> Result<()> {
+    let spec = parse_remote(remote)?;
+    let dispatch = detect_bulk_from(&spec, remote);
+
+    match dispatch {
+        Dispatch::Single => run_single_clone(context, registry, remote),
+        Dispatch::Bulk { plugin, target } => {
+            run_bulk_clone(context, registry, plugin, &target, None)?;
+            Ok(())
+        }
+        Dispatch::BulkProbe { plugin, target } => {
+            let (resolved, prefetched) = resolve_probe(plugin, &target)?;
+            match resolved {
+                Dispatch::Single => {
+                    eprintln!(
+                        "{} did not match a {} group; cloning as a single repo",
+                        target,
+                        plugin.as_str(),
+                    );
+                    run_single_clone(context, registry, remote)
+                }
+                Dispatch::Bulk {
+                    plugin: p,
+                    target: t,
+                } => {
+                    run_bulk_clone(context, registry, p, &t, prefetched)?;
+                    Ok(())
+                }
+                Dispatch::BulkProbe { .. } => unreachable!("resolve_probe never returns BulkProbe"),
+            }
+        }
+    }
+}
+
+fn run_single_clone(
+    context: &ContextState,
+    registry: &mut nanite_core::Registry,
+    remote: &str,
+) -> Result<()> {
+    let spec = parse_remote(remote)?;
+    let destination = destination_for(context.workspace_paths.repos_root(), &spec);
+
+    let force = if destination.exists() {
+        if !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
+            bail!("{destination} already exists; overwriting needs an interactive TTY");
+        }
+        if !confirm(&format!("{destination} already exists. Overwrite?"), false)? {
+            println!("skipped; {destination} left untouched");
+            return Ok(());
+        }
+        true
+    } else {
+        false
+    };
+
+    let progress = clone_progress_display(remote)?;
+    let result = clone_repo(
+        context.workspace_paths.repos_root(),
+        remote,
+        force,
+        progress.clone(),
+    );
+    drop(progress);
+    let record = result?;
+    println!("cloned {}", record.path);
+    registry.upsert(record);
+    Ok(())
+}
+
+pub fn clone_progress_display(remote: &str) -> Result<Option<SharedCloneProgressDisplay>> {
     if !io::stderr().is_terminal() {
         return Ok(None);
     }

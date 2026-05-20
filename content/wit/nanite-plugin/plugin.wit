@@ -1,0 +1,26 @@
+package nanite:plugin@0.1.0;
+
+interface host {
+  enum log-level {
+    trace,
+    debug,
+    info,
+    warn,
+    error,
+  }
+
+  /// Host-mediated environment lookup. Host enforces an allowlist per
+  /// plugin; names outside the allowlist return `none` even when set.
+  get-env: func(name: string) -> option<string>;
+
+  /// Structured log line emitted by the plugin; host decides rendering.
+  log: func(level: log-level, message: string);
+}
+
+interface plugin {
+  use types.{list-input, repo-entry, plugin-error, plugin-info};
+
+  info: func() -> plugin-info;
+
+  list-repos: func(input: list-input) -> result<list<repo-entry>, plugin-error>;
+}

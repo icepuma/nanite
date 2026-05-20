@@ -1,0 +1,41 @@
+package nanite:plugin@0.1.0;
+
+interface types {
+  record repo-entry {
+    name: string,
+    clone-url: string,
+    default-branch: option<string>,
+    archived: bool,
+    fork: bool,
+    description: option<string>,
+  }
+
+  record list-input {
+    target: string,
+    include-archived: bool,
+    include-forks: bool,
+    exclude-patterns: list<string>,
+    page-size: option<u32>,
+  }
+
+  record plugin-info {
+    name: string,
+    version: string,
+    supported-hosts: list<string>,
+  }
+
+  record rate-limit {
+    retry-after-seconds: option<u32>,
+    message: string,
+  }
+
+  variant plugin-error {
+    auth-required(string),
+    not-found(string),
+    rate-limited(rate-limit),
+    network(string),
+    decode(string),
+    unsupported(string),
+    internal(string),
+  }
+}

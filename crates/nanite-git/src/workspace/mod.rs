@@ -34,7 +34,13 @@ fn remove_existing_path(path: &Utf8Path) -> Result<()> {
     Ok(())
 }
 
-fn destination_for(workspace_root: &Utf8Path, spec: &RemoteSpec) -> Utf8PathBuf {
+/// Computes the workspace destination path for a parsed remote.
+///
+/// Layout is always `<workspace_root>/<host>/<repo_path>`. The CLI uses
+/// this to pre-check whether a clone would overwrite an existing
+/// directory and prompt the user accordingly.
+#[must_use]
+pub fn destination_for(workspace_root: &Utf8Path, spec: &RemoteSpec) -> Utf8PathBuf {
     workspace_root.join(&spec.host).join(&spec.repo_path)
 }
 

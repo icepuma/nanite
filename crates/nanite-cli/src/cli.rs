@@ -91,12 +91,16 @@ pub enum GenerateCommands {
     after_help = "Examples:\n  nanite repo clone github.com/icepuma/nanite\n  nanite repo remove --yes github.com/icepuma/nanite\n  nanite repo refresh"
 )]
 pub enum RepoCommands {
-    #[command(about = "Clone a repository into the workspace", long_about = None)]
+    #[command(
+        about = "Clone a repository, GitHub org, or GitLab group into the workspace",
+        long_about = "Detection is fully URL-based:\n  github.com/<owner>            -> all repos in the org/user (interactive confirm)\n  github.com/<owner>/<repo>     -> single repo\n  gitlab.com/<path>             -> probed via GitLab API; group -> bulk, project -> single\n  *.git suffix                  -> always single\n\nIf any destination already exists, nanite asks interactively before overwriting.\nA TTY is required whenever a prompt is needed."
+    )]
     Clone {
-        #[arg(value_name = "REMOTE", help = "Git remote or repository spec to clone")]
+        #[arg(
+            value_name = "REMOTE",
+            help = "Git remote, repository spec, GitHub org URL, or GitLab group URL"
+        )]
         remote: String,
-        #[arg(long, help = "Overwrite an existing destination directory")]
-        force: bool,
     },
     #[command(about = "Remove a repository from the workspace", long_about = None)]
     Remove {

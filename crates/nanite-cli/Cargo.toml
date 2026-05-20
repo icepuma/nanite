@@ -22,6 +22,7 @@ ignore.workspace = true
 nanite-agents = { path = "../nanite-agents" }
 nanite-core = { path = "../nanite-core" }
 nanite-git = { path = "../nanite-git" }
+nanite-plugins = { path = "../nanite-plugins" }
 ratatui.workspace = true
 rayon.workspace = true
 regex.workspace = true

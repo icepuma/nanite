@@ -1,0 +1,18 @@
+package nanite:plugin@0.1.0;
+
+/// World linked by both the host (via `wasmtime::component::bindgen!`)
+/// and the guest plugin (via `wit_bindgen::generate!`).
+///
+/// WASI imports (`wasi:http`, `wasi:io`, `wasi:clocks`, `wasi:random`)
+/// are intentionally NOT declared here. The guest pulls them in
+/// transparently via the `waki` HTTP client; the host satisfies them
+/// at link time via `wasmtime_wasi_http::add_only_http_to_linker_sync`
+/// and `wasmtime_wasi::add_to_linker_sync` (clocks/io/random).
+///
+/// The host does NOT expose `wasi:filesystem`, `wasi:cli/environment`,
+/// `wasi:sockets`, or stdin/stdout — env access flows only through
+/// the allowlisted `nanite:plugin/host.get-env` import below.
+world clone-plugin {
+  import host;
+  export plugin;
+}
