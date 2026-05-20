@@ -12,9 +12,12 @@ fn main() {
         let path = workspace_root.join("content/plugins").join(plugin);
         assert!(
             path.exists(),
-            "bundled plugin {} is missing at {}; run `just build-plugins` to produce it",
-            plugin,
-            path.display()
+            "bundled plugin {plugin} is missing at {}.\n\
+             WASM plugins are not committed to git — they are produced from\n\
+             `plugins/` and CI rebuilds them on every job. Locally, run\n\
+             `just build-plugins` once (and again after editing anything\n\
+             under `plugins/` or `content/wit/`).",
+            path.display(),
         );
         println!("cargo:rerun-if-changed={}", path.display());
     }

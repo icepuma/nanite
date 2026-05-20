@@ -24,3 +24,6 @@ target
 /content/gitignores/
 /content/licenses/*
 !/content/licenses/README.md
+
+# Built WASM plugin artifacts — produced by `just build-plugins` (CI does this on each build).
+/content/plugins/*.wasm

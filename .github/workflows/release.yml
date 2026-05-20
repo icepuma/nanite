@@ -61,6 +61,7 @@ jobs:
           rustup toolchain install "${RUST_TOOLCHAIN}" --profile minimal
           rustup override set "${RUST_TOOLCHAIN}"
           rustup target add "${{ matrix.target }}"
+          rustup target add wasm32-wasip2
 
       - name: Install CI tools
         uses: taiki-e/install-action@v2
@@ -69,6 +70,9 @@ jobs:
 
       - name: Download vendored generator catalogs
         run: just sync-vendored-files
+
+      - name: Build WASM plugins
+        run: just build-plugins
 
       - name: Build release binary with cargo-zigbuild
         if: matrix.build_tool == 'zigbuild'

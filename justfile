@@ -60,7 +60,7 @@ sync-license-files:
     printf 'license files synced: %s\n' "$count"
     printf 'rules file: %s\n' "$destination_dir/_data/rules.yml"
 
-verify: verify-plugins
+verify: build-plugins
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::cargo -A clippy::multiple-crate-versions
     cargo clippy --workspace --all-features --lib --bins -- -D clippy::unwrap_used -D clippy::expect_used -A clippy::multiple-crate-versions
@@ -80,12 +80,3 @@ build-plugins:
        content/plugins/gitlab-group.wasm
     printf 'plugins built and copied to content/plugins/\n'
 
-verify-plugins: build-plugins
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! git diff --quiet content/plugins; then
-      printf 'content/plugins/ is out of date — commit the rebuilt .wasm files\n' >&2
-      git diff --stat content/plugins >&2
-      exit 1
-    fi
-    printf 'content/plugins/ matches sources\n'

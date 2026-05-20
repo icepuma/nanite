@@ -24,6 +24,7 @@ jobs:
         run: |
           rustup toolchain install 1.95.0 --profile minimal --component clippy --component rustfmt
           rustup override set 1.95.0
+          rustup target add wasm32-wasip2
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2.9.1
@@ -35,6 +36,9 @@ jobs:
 
       - name: Download vendored generator catalogs
         run: just sync-vendored-files
+
+      - name: Build WASM plugins
+        run: just build-plugins
 
       - name: Run just verify
         run: just verify
