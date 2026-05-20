@@ -17,7 +17,37 @@ env:
   RUST_TOOLCHAIN: 1.95.0
 
 jobs:
+  build-plugins:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "${RUST_TOOLCHAIN}" --profile minimal
+          rustup override set "${RUST_TOOLCHAIN}"
+          rustup target add wasm32-wasip2
+
+      - name: Install CI tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Build WASM plugins
+        run: just build-plugins
+
+      - name: Upload WASM plugin artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-plugins
+          path: content/plugins/*.wasm
+          if-no-files-found: error
+          retention-days: 1
+
   build:
+    needs: build-plugins
     runs-on: ${{ matrix.runner }}
 
     strategy:
@@ -61,7 +91,6 @@ jobs:
           rustup toolchain install "${RUST_TOOLCHAIN}" --profile minimal
           rustup override set "${RUST_TOOLCHAIN}"
           rustup target add "${{ matrix.target }}"
-          rustup target add wasm32-wasip2
 
       - name: Install CI tools
         uses: taiki-e/install-action@v2
@@ -71,8 +100,11 @@ jobs:
       - name: Download vendored generator catalogs
         run: just sync-vendored-files
 
-      - name: Build WASM plugins
-        run: just build-plugins
+      - name: Download WASM plugin artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: wasm-plugins
+          path: content/plugins
 
       - name: Build release binary with cargo-zigbuild
         if: matrix.build_tool == 'zigbuild'
