@@ -74,6 +74,7 @@ build-plugins:
     set -euo pipefail
     rustup target add wasm32-wasip2 >/dev/null 2>&1 || true
     (cd plugins && cargo build --release -p github-org -p gitlab-group)
+    mkdir -p content/plugins
     cp plugins/target/wasm32-wasip2/release/github_org.wasm \
        content/plugins/github-org.wasm
     cp plugins/target/wasm32-wasip2/release/gitlab_group.wasm \
