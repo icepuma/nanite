@@ -22,3 +22,6 @@ target
 
 # Built WASM plugin artifacts — produced by `just build-plugins` (CI does this on each build).
 /content/plugins/*.wasm
+
+# macOS Finder metadata
+.DS_Store
