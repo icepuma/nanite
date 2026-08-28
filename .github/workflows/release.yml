@@ -15,13 +15,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: 1.95.0
-  # `arborium-just`'s tree-sitter scanner explicitly errors when
-  # `NDEBUG` is defined (it relies on `assert()` for memory safety).
-  # `cc-rs` adds `-DNDEBUG` for any release build, so we undefine it
-  # back for each target we ship.
-  CFLAGS_x86_64_unknown_linux_musl: -UNDEBUG
-  CFLAGS_aarch64_unknown_linux_musl: -UNDEBUG
-  CFLAGS_aarch64_apple_darwin: -UNDEBUG
 
 jobs:
   build-plugins:
@@ -103,9 +96,6 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just
-
-      - name: Download vendored generator catalogs
-        run: just sync-vendored-files
 
       - name: Download WASM plugin artifacts
         uses: actions/download-artifact@v8

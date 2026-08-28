@@ -3,7 +3,6 @@ members = [
     "crates/nanite-cli",
     "crates/nanite-core",
     "crates/nanite-git",
-    "crates/nanite-agents",
     "crates/nanite-plugins",
 ]
 exclude = ["plugins"]
@@ -21,30 +20,23 @@ shared-version = true
 tag-name = "v{{version}}"
 
 [workspace.dependencies]
-anyhow = "=1.0.102"
-arborium = { version = "=2.17.0", features = ["all-languages"] }
+anyhow = "=1.0.104"
 assert_cmd = "=2.2.2"
-camino = { version = "=1.2.2", features = ["serde1"] }
-clap = { version = "=4.6.1", features = ["derive", "wrap_help"] }
-clap_complete = "=4.6.5"
+camino = { version = "=1.2.5", features = ["serde1"] }
+clap = { version = "=4.6.6", features = ["derive", "wrap_help"] }
+clap_complete = "=4.6.9"
 crossterm = "=0.29.0"
-ignore = "=0.4.25"
 predicates = "=3.1.4"
-ratatui = "=0.30.0"
-rayon = "=1.12.0"
-regex = "=1.12.3"
-serde = { version = "=1.0.228", features = ["derive"] }
-serde_json = "=1.0.149"
-serde_yaml = "=0.9.34"
-tantivy = "=0.26.1"
-tera = "=1.20.1"
+ratatui = "=0.30.2"
+regex = "=1.13.1"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
 tempfile = "=3.27.0"
-time = { version = "=0.3.47", features = ["formatting", "macros", "parsing", "serde"] }
-tiny_http = "=0.12.0"
-toml = "=1.1.2"
+time = { version = "=0.3.55", features = ["formatting", "macros", "parsing", "serde"] }
+toml = "=1.1.4"
 url = "=2.5.8"
 walkdir = "=2.5.0"
-which = "=8.0.2"
+which = "=8.0.6"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

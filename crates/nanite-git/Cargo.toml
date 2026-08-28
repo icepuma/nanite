@@ -9,7 +9,7 @@ version.workspace = true
 [dependencies]
 anyhow.workspace = true
 camino.workspace = true
-gix = { version = "=0.83.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "sha1", "worktree-mutation"] }
+gix = { version = "=0.87.1", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "sha1", "worktree-mutation"] }
 nanite-core = { path = "../nanite-core" }
 regex.workspace = true
 time.workspace = true
