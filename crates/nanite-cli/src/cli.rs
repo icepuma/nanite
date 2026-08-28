@@ -3,7 +3,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(
     name = "nanite",
-    about = "Manage local repositories in an AI-first workspace",
+    about = "Organize and navigate local repositories in a workspace",
     long_about = None,
     after_help = "Examples:\n  nanite setup ~/workspace\n  nanite repo clone github.com/icepuma/nanite\n  nanite repo refresh\n  nanite jumpto nanite",
     version
