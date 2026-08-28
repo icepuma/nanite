@@ -1,72 +1,17 @@
 use crate::cli::Cli;
-use crate::context::ContextState;
-use crate::init::InitProgress;
 use crate::jump::{jumpto_fzf_args, render_jumpto_candidates};
 use crate::shell::render_fish_init;
 use clap::Parser;
-use nanite_core::{
-    AgentKind, AppPaths, Config, PreparedTemplate, ProjectRecord, SourceKind, TemplateFragment,
-};
-use std::collections::HashMap;
-use std::ffi::OsString;
+use nanite_core::{ProjectRecord, SourceKind};
 use time::OffsetDateTime;
 
 #[test]
-fn fish_init_includes_wrapper_and_env_export() {
-    let env = HashMap::from([("HOME".to_owned(), "/tmp/home".to_owned())]);
-    let context = ContextState {
-        app_paths: AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap(),
-        config: Config {
-            workspace_root: camino::Utf8PathBuf::from("/tmp/home/development"),
-            agent: AgentKind::Codex,
-        },
-        workspace_paths: nanite_core::WorkspacePaths::new(camino::Utf8PathBuf::from(
-            "/tmp/home/development",
-        )),
-        git_binary: "git".to_owned(),
-        fzf_binary: "fzf".to_owned(),
-        zed_binary: "zed".to_owned(),
-    };
-
-    let script = render_fish_init(&context);
+fn fish_init_includes_wrapper_and_completions() {
+    let script = render_fish_init();
 
     assert!(script.contains("function jumpto"));
-    assert!(script.contains("CODEX_HOME"));
     assert!(script.contains("complete -c jumpto"));
-}
-
-#[test]
-fn init_progress_renders_readme_checklist() {
-    let prepared = nanite_core::PreparedBundle {
-        name: "default".to_owned(),
-        source_path: "/tmp/default".into(),
-        templates: vec![PreparedTemplate {
-            output_name: "README.md".to_owned(),
-            source_path: "/tmp/default/README.md".into(),
-            fragments: vec![
-                TemplateFragment::Literal("# test\n\n".to_owned()),
-                TemplateFragment::Ai(nanite_core::AiPlaceholder {
-                    index: 0,
-                    prompt: "badges".to_owned(),
-                }),
-                TemplateFragment::Literal("\n\n".to_owned()),
-                TemplateFragment::Ai(nanite_core::AiPlaceholder {
-                    index: 1,
-                    prompt: "overview".to_owned(),
-                }),
-            ],
-            values: std::collections::BTreeMap::new(),
-        }],
-        values: std::collections::BTreeMap::new(),
-    };
-
-    let mut progress = InitProgress::new(&prepared);
-    progress.mark_done(InitProgress::select_step_index(), None);
-    progress.start(progress.generate_step_index(), None);
-    let rendered = progress.rendered();
-
-    assert!(rendered.contains("working"));
-    assert!(rendered.contains("Generate AI fragments"));
+    assert!(!script.contains("CODEX_HOME"));
 }
 
 #[test]
@@ -87,34 +32,6 @@ fn repo_clone_takes_only_remote() {
 fn repo_clone_rejects_unknown_flag() {
     let parsed = Cli::try_parse_from(["nanite", "repo", "clone", "--force", "owner/repo"]);
     assert!(parsed.is_err(), "--force should no longer be accepted");
-}
-
-#[test]
-fn generate_gitignore_accepts_force_flag() {
-    let cli = Cli::parse_from(["nanite", "generate", "gitignore", "--force"]);
-
-    match cli.command {
-        crate::cli::Commands::Generate {
-            command: crate::cli::GenerateCommands::Gitignore { force },
-        } => {
-            assert!(force);
-        }
-        _ => panic!("expected generate gitignore command"),
-    }
-}
-
-#[test]
-fn generate_license_accepts_force_flag() {
-    let cli = Cli::parse_from(["nanite", "generate", "license", "--force"]);
-
-    match cli.command {
-        crate::cli::Commands::Generate {
-            command: crate::cli::GenerateCommands::License { force },
-        } => {
-            assert!(force);
-        }
-        _ => panic!("expected generate license command"),
-    }
 }
 
 #[test]

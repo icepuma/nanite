@@ -11,11 +11,11 @@ version = "0.1.0"
 
 [workspace.dependencies]
 plugin-shared = { path = "shared" }
-serde = { version = "=1.0.228", features = ["derive"] }
-serde_json = "=1.0.149"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
 url = "=2.5.8"
 waki = { version = "=0.5.1", features = ["json"] }
-wit-bindgen = "=0.57.1"
+wit-bindgen = "=0.61.1"
 
 [workspace.lints.rust]
 # wit-bindgen-generated code requires `unsafe` for ABI marshalling, so

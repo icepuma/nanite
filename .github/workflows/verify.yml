@@ -34,9 +34,6 @@ jobs:
         with:
           tool: just,cargo-nextest,cargo-deny
 
-      - name: Download vendored generator catalogs
-        run: just sync-vendored-files
-
       - name: Build WASM plugins
         run: just build-plugins
 

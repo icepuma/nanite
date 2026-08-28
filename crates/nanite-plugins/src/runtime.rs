@@ -5,8 +5,9 @@ use std::sync::OnceLock;
 use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
-use wasmtime_wasi_http::WasiHttpCtx;
-use wasmtime_wasi_http::p2::{WasiHttpCtxView, WasiHttpHooks, WasiHttpView, default_hooks};
+use wasmtime_wasi_http::{
+    WasiHttpCtx, WasiHttpCtxView, WasiHttpHooks, WasiHttpView, default_hooks,
+};
 
 /// Adapter so we can chain `.context(...)` onto `wasmtime::Result`.
 /// wasmtime's `Error` type doesn't impl `std::error::Error` (it can't

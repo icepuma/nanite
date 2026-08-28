@@ -7,19 +7,11 @@ use std::fs;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub workspace_root: Utf8PathBuf,
-    pub agent: AgentKind,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentKind {
-    Codex,
-    Claude,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct ConfigFile {
     workspace_root: String,
-    agent: String,
 }
 
 impl Config {
@@ -51,14 +43,13 @@ impl Config {
         let file: ConfigFile =
             toml::from_str(&raw).with_context(|| format!("failed to parse {config_path}"))?;
 
-        Ok(Some(Self::from_file(&file, paths)?))
+        Ok(Some(Self::from_file(&file, paths)))
     }
 
     #[must_use]
     pub fn default_for(paths: &AppPaths) -> Self {
         Self {
             workspace_root: paths.home_dir().join("development"),
-            agent: AgentKind::Codex,
         }
     }
 
@@ -86,36 +77,16 @@ impl Config {
         WorkspacePaths::new(self.workspace_root.clone())
     }
 
-    fn from_file(file: &ConfigFile, paths: &AppPaths) -> Result<Self> {
-        Ok(Self {
+    fn from_file(file: &ConfigFile, paths: &AppPaths) -> Self {
+        Self {
             workspace_root: expand_path(&file.workspace_root, paths),
-            agent: parse_agent(&file.agent)?,
-        })
+        }
     }
 
     fn to_file(&self) -> ConfigFile {
         ConfigFile {
             workspace_root: self.workspace_root.to_string(),
-            agent: self.agent.as_str().to_owned(),
         }
-    }
-}
-
-impl AgentKind {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Codex => "codex",
-            Self::Claude => "claude",
-        }
-    }
-}
-
-fn parse_agent(value: &str) -> Result<AgentKind> {
-    match value {
-        "codex" => Ok(AgentKind::Codex),
-        "claude" => Ok(AgentKind::Claude),
-        other => bail!("unsupported agent `{other}`; supported agents: codex, claude"),
     }
 }
 
@@ -139,28 +110,27 @@ fn expand_path(value: &str, paths: &AppPaths) -> Utf8PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{AgentKind, Config};
+    use super::Config;
     use crate::app_paths::AppPaths;
+    use camino::Utf8PathBuf;
     use std::collections::HashMap;
     use std::ffi::OsString;
 
-    #[test]
-    fn default_config_uses_codex_agent() {
+    fn test_paths() -> AppPaths {
         let env = HashMap::from([("HOME".to_owned(), "/tmp/home".to_owned())]);
-        let paths = AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap();
+        AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap()
+    }
 
-        let config = Config::default_for(&paths);
+    #[test]
+    fn default_config_points_at_the_home_development_directory() {
+        let config = Config::default_for(&test_paths());
 
         assert_eq!(config.workspace_root.as_str(), "/tmp/home/development");
-        assert_eq!(config.agent, AgentKind::Codex);
     }
 
     #[test]
     fn load_errors_when_nanite_is_unconfigured() {
-        let env = HashMap::from([("HOME".to_owned(), "/tmp/home".to_owned())]);
-        let paths = AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap();
-
-        let error = Config::load(&paths).unwrap_err();
+        let error = Config::load(&test_paths()).unwrap_err();
 
         assert!(
             error
@@ -170,9 +140,21 @@ mod tests {
     }
 
     #[test]
-    fn loads_new_agent_config() {
-        let env = HashMap::from([("HOME".to_owned(), "/tmp/home".to_owned())]);
-        let paths = AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap();
+    fn loads_the_workspace_root_from_the_config_file() {
+        let file: super::ConfigFile = toml::from_str(
+            r#"
+workspace_root = "/tmp/home/development"
+"#,
+        )
+        .unwrap();
+
+        let config = Config::from_file(&file, &test_paths());
+
+        assert_eq!(config.workspace_root.as_str(), "/tmp/home/development");
+    }
+
+    #[test]
+    fn ignores_settings_left_over_from_older_config_files() {
         let file: super::ConfigFile = toml::from_str(
             r#"
 workspace_root = "/tmp/home/development"
@@ -181,78 +163,34 @@ agent = "codex"
         )
         .unwrap();
 
-        let config = Config::from_file(&file, &paths).unwrap();
+        let config = Config::from_file(&file, &test_paths());
 
         assert_eq!(config.workspace_root.as_str(), "/tmp/home/development");
-        assert_eq!(config.agent, AgentKind::Codex);
     }
 
     #[test]
-    fn loads_claude_agent_config() {
-        let env = HashMap::from([("HOME".to_owned(), "/tmp/home".to_owned())]);
-        let paths = AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap();
+    fn expands_a_home_relative_workspace_root() {
         let file: super::ConfigFile = toml::from_str(
             r#"
-workspace_root = "/tmp/home/development"
-agent = "claude"
+workspace_root = "~/development"
 "#,
         )
         .unwrap();
 
-        let config = Config::from_file(&file, &paths).unwrap();
+        let config = Config::from_file(&file, &test_paths());
 
         assert_eq!(config.workspace_root.as_str(), "/tmp/home/development");
-        assert_eq!(config.agent, AgentKind::Claude);
     }
 
     #[test]
-    fn rejects_missing_agent_in_config() {
-        let error = toml::from_str::<super::ConfigFile>(
-            r#"
-workspace_root = "/tmp/home/development"
-"#,
-        )
-        .unwrap_err();
-
-        assert!(error.to_string().contains("missing field `agent`"));
-    }
-
-    #[test]
-    fn rejects_invalid_agent_values() {
-        let env = HashMap::from([("HOME".to_owned(), "/tmp/home".to_owned())]);
-        let paths = AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap();
-        let file: super::ConfigFile = toml::from_str(
-            r#"
-workspace_root = "/tmp/home/development"
-agent = "gpt"
-"#,
-        )
-        .unwrap();
-
-        let error = Config::from_file(&file, &paths).unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("supported agents: codex, claude")
-        );
-    }
-
-    #[test]
-    fn saves_the_minimal_agent_config() {
-        let env = HashMap::from([("HOME".to_owned(), "/tmp/home".to_owned())]);
-        let _paths = AppPaths::from_env(|key| env.get(key).map(OsString::from)).unwrap();
+    fn saves_the_minimal_config() {
         let config = Config {
             workspace_root: Utf8PathBuf::from("/tmp/home/development"),
-            agent: AgentKind::Codex,
         };
 
         let rendered = toml::to_string_pretty(&config.to_file()).unwrap();
 
         assert!(rendered.contains("workspace_root = \"/tmp/home/development\""));
-        assert!(rendered.contains("agent = \"codex\""));
-        assert!(!rendered.contains("[providers"));
+        assert!(!rendered.contains("agent"));
     }
-
-    use camino::Utf8PathBuf;
 }

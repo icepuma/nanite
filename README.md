@@ -2,7 +2,7 @@
 
 [![Verify](https://github.com/icepuma/nanite/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/icepuma/nanite/actions/workflows/verify.yml)
 
-Nanite is a local CLI for managing a repository workspace: it organizes repos, generates common project files, searches code across the workspace, and keeps AI tool skills in sync.
+Nanite is a local CLI for managing a repository workspace: it organizes repos under a predictable layout and helps you navigate between them.
 
 ## Quick Start
 
@@ -28,13 +28,6 @@ nanite repo refresh
 cd "$(nanite jumpto nanite)"
 ```
 
-Search the workspace from the terminal or the local web UI:
-
-```sh
-nanite search workspace_root
-nanite search --web
-```
-
 ## Usage
 
 A typical flow looks like this:
@@ -43,21 +36,14 @@ A typical flow looks like this:
 nanite setup ~/workspace
 nanite repo clone github.com/icepuma/nanite
 cd "$(nanite jumpto nanite)"
-nanite generate gitignore
-nanite generate license
-nanite search 'repo:nanite workspace_root'
-nanite search --web
-nanite skill sync codex --apply
+nanite shell init fish | source
 ```
 
 Main commands:
 
-- `nanite repo clone|import|remove|refresh` manages repositories under the workspace.
+- `nanite setup <path>` creates the workspace and records its location.
+- `nanite repo clone|import|remove|refresh` manages repositories under the workspace. Cloning an org or group URL (for example `github.com/icepuma`) bulk-clones every repository it contains.
 - `nanite jumpto <query>` prints a repo path for shell wrappers and fast navigation.
-- `nanite search <query>` searches indexed workspace code; `nanite search --web` serves the local search UI.
-- `nanite init` renders a managed template into the current repository.
-- `nanite generate gitignore|license` renders bundled file templates.
-- `nanite skill sync codex|claude --apply` installs Nanite-managed skills for supported agents (symlinks `~/.agents/skills/<slug>` for Codex, `~/.claude/skills/<slug>` for Claude Code).
 - `nanite shell init fish` prints shell integration and completions.
 
 Use `nanite --help` and `nanite <command> --help` for command-specific flags and examples.
@@ -70,12 +56,6 @@ From the repository root:
 cargo build
 cargo run -- --help
 just verify
-```
-
-Refresh the vendored catalogs with:
-
-```sh
-just sync-vendored-files
 ```
 
 ## License

@@ -1,26 +1,22 @@
 use crate::build_cli;
 use crate::cli::{ShellArg, ShellCommands};
-use crate::context::ContextState;
-use crate::util::escape_fish_string;
 use clap_complete::{Generator, Shell, generate};
 
-pub fn command_shell(context: &ContextState, command: ShellCommands) {
+pub fn command_shell(command: ShellCommands) {
     match command {
         ShellCommands::Init {
             shell: ShellArg::Fish,
         } => {
-            print!("{}", render_fish_init(context));
+            print!("{}", render_fish_init());
         }
     }
 }
 
-pub fn render_fish_init(context: &ContextState) -> String {
-    let escaped_codex_home = escape_fish_string(context.app_paths.codex_home_root().as_str());
+pub fn render_fish_init() -> String {
     let completions = generate_completion_script(Shell::Fish);
 
     format!(
-        "set -gx CODEX_HOME \"{escaped_codex_home}\"\n\
-function jumpto --description 'cd into a Nanite repository'\n\
+        "function jumpto --description 'cd into a Nanite repository'\n\
     set -l destination (nanite jumpto $argv)\n\
     or return $status\n\
     if test -n \"$destination\"\n\
