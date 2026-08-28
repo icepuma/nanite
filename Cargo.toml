@@ -12,7 +12,7 @@ resolver = "3"
 edition = "2024"
 license = "MIT"
 publish = false
-rust-version = "1.95"
+rust-version = "1.98"
 version = "0.1.11"
 
 [workspace.metadata.release]
