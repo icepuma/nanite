@@ -14,7 +14,7 @@ nanite-git = { path = "../nanite-git" }
 # but rustls 0.23 requires a process-wide `CryptoProvider` to be picked
 # explicitly. We pick `aws-lc-rs` (already in the tree) and install it
 # via a `OnceLock` at the top of `PluginRuntime::new`.
-rustls = { version = "=0.23.43", default-features = false, features = ["aws_lc_rs"] }
+rustls = { version = "=0.23.45", default-features = false, features = ["aws_lc_rs"] }
 serde.workspace = true
 thiserror = "=2.0.20"
 tokio = { version = "=1.53.1", features = ["rt", "macros"] }
