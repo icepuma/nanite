@@ -77,7 +77,6 @@ require_checksum() {
   fi
 }
 
-version="${tag#v}"
 darwin_arm64_archive="nanite-${tag}-aarch64-apple-darwin.tar.gz"
 linux_arm64_archive="nanite-${tag}-aarch64-unknown-linux-musl.tar.gz"
 linux_amd64_archive="nanite-${tag}-x86_64-unknown-linux-musl.tar.gz"
@@ -94,7 +93,6 @@ cat >"$formula_path" <<EOF
 class Nanite < Formula
   desc "Manage local repositories in an AI-first workspace"
   homepage "https://github.com/icepuma/nanite"
-  version "${version}"
   license "MIT"
 
   depends_on "fzf"

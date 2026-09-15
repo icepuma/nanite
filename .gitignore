@@ -24,4 +24,4 @@ target
 /content/plugins/*.wasm
 
 # macOS Finder metadata
-.DS_Store
+**/.DS_Store

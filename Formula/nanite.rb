@@ -1,7 +1,6 @@
 class Nanite < Formula
   desc "Manage local repositories in an AI-first workspace"
   homepage "https://github.com/icepuma/nanite"
-  version "0.2.0"
   license "MIT"
 
   depends_on "fzf"
