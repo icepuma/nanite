@@ -282,7 +282,7 @@ fn repo_remove_deletes_repo_and_prunes_empty_parents() {
     assert!(!repos_root.join("github.com/icepuma").exists());
     assert!(!repos_root.join("github.com").exists());
     let registry = Registry::load(&env.registry_path()).unwrap();
-    assert!(registry.entries().is_empty());
+    assert_eq!(registry.entries().len(), 0);
 }
 
 #[test]

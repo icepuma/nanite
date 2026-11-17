@@ -14,7 +14,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_TOOLCHAIN: 1.98.0
+  RUST_TOOLCHAIN: 1.100.0
 
 jobs:
   build-plugins:
@@ -78,7 +78,7 @@ jobs:
         if: matrix.build_tool == 'zigbuild'
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.17.1
 
       - name: Install cargo-zigbuild
         if: matrix.build_tool == 'zigbuild'

@@ -13,7 +13,6 @@ crate-type = ["cdylib"]
 plugin-shared.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-url.workspace = true
 waki.workspace = true
 wit-bindgen.workspace = true
 
