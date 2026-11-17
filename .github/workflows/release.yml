@@ -24,19 +24,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
-        run: |
-          rustup toolchain install "${RUST_TOOLCHAIN}" --profile minimal
-          rustup override set "${RUST_TOOLCHAIN}"
-          rustup target add wasm32-wasip2
-
-      - name: Install CI tools
-        uses: taiki-e/install-action@v2
-        with:
-          tool: just
-
       - name: Build WASM plugins
-        run: just build-plugins
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: "1.0.0-beta.26"
+          verb: generate
+          args: --generator wasm -y
 
       - name: Upload WASM plugin artifacts
         uses: actions/upload-artifact@v7
@@ -91,11 +84,6 @@ jobs:
           rustup toolchain install "${RUST_TOOLCHAIN}" --profile minimal
           rustup override set "${RUST_TOOLCHAIN}"
           rustup target add "${{ matrix.target }}"
-
-      - name: Install CI tools
-        uses: taiki-e/install-action@v2
-        with:
-          tool: just
 
       - name: Download WASM plugin artifacts
         uses: actions/download-artifact@v8

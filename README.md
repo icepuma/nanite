@@ -52,10 +52,13 @@ Use `nanite --help` and `nanite <command> --help` for command-specific flags and
 
 From the repository root:
 
+Requires [Dagger](https://docs.dagger.io) (1.0 beta) and a container runtime.
+
 ```sh
+dagger generate -y    # build the bundled WASM plugins into content/plugins/
 cargo build
 cargo run -- --help
-just verify
+dagger check          # fmt, clippy, tests, docs, cargo-deny — same as CI
 ```
 
 ## License

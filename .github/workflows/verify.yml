@@ -9,9 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -20,22 +17,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Install Rust 1.100.0
-        run: |
-          rustup toolchain install 1.100.0 --profile minimal --component clippy --component rustfmt
-          rustup override set 1.100.0
-          rustup target add wasm32-wasip2
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2.9.3
-
-      - name: Install CI tools
-        uses: taiki-e/install-action@v2
+      - name: Run Dagger checks
+        uses: dagger/dagger-for-github@v8.4.1
         with:
-          tool: just,cargo-nextest,cargo-deny
-
-      - name: Build WASM plugins
-        run: just build-plugins
-
-      - name: Run just verify
-        run: just verify
+          version: "1.0.0-beta.26"
+          verb: check
+          # content/plugins/*.wasm is gitignored, so skip the "generated files
+          # are up to date" checks; the checks build the plugins themselves.
+          args: --generated=false
