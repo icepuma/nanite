@@ -1,0 +1,6 @@
+name = "nanite"
+engineVersion = "v1.0.0-beta.26"
+source = ".dagger"
+
+[runtime]
+  source = "dang"

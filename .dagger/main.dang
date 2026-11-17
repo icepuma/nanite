@@ -1,0 +1,136 @@
+pub description = "CI checks for the nanite workspace (fmt, clippy, tests, docs, deny)"
+
+type Nanite {
+  pub rustImage: String! = "rust:1.100.0-bookworm"
+  pub nextestVersion: String! = "0.9.152"
+  pub denyVersion: String! = "0.21.0"
+  pub kacheVersion: String! = "v2.1.1"
+
+  # Toolchain + CI tools. Cached as one layer; source edits never rebuild it.
+  let toolchain: Container! {
+    container.from(rustImage)
+      .withExec(["rustup", "component", "add", "clippy", "rustfmt"])
+      .withExec(["rustup", "target", "add", "wasm32-wasip2"])
+      .withExec(["sh", "-c", "apt-get update -qq && apt-get install -y -qq --no-install-recommends mold"])
+      .withExec(["sh", "-euc", """
+        arch=$(uname -m)
+        curl -fsSL "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$1/cargo-nextest-$1-$arch-unknown-linux-gnu.tar.gz" | tar xz -C /usr/local/cargo/bin
+        curl -fsSL "https://github.com/EmbarkStudios/cargo-deny/releases/download/$2/cargo-deny-$2-$arch-unknown-linux-musl.tar.gz" | tar xz --strip-components=1 -C /usr/local/cargo/bin
+        curl -fsSL "https://github.com/kunobi-ninja/kache/releases/download/$3/kache-$arch-unknown-linux-musl.tar.gz" | tar xz -C /usr/local/bin kache kache-engine
+      """, "install-tools", nextestVersion, denyVersion, kacheVersion])
+      # All of CARGO_HOME is shared so cargo's package-cache lock is too; parallel
+      # checks otherwise race unpacking crates. Tools stay in /usr/local/cargo/bin.
+      .withMountedCache("/cargo", cacheVolume("nanite-cargo-home"))
+      .withEnvVariable("CARGO_HOME", "/cargo")
+      .withEnvVariable("CARGO_TERM_COLOR", "always")
+      # kache: per-unit rustc cache, shared by every check and the plugin build.
+      # Its own runtime dir per container, as kache requires for shared stores.
+      .withMountedCache("/kache", cacheVolume("nanite-kache"))
+      .withEnvVariable("KACHE_CACHE_DIR", "/kache")
+      .withEnvVariable("KACHE_RUNTIME_DIR", "/tmp/kache-run")
+      .withEnvVariable("RUSTC_WRAPPER", "kache")
+      # target/ persists in a cache volume; kache docs say disable incremental then.
+      .withEnvVariable("CARGO_INCREMENTAL", "0")
+      # Linking 7 test binaries dominates rebuilds. With mold + line-tables-only,
+      # an incremental test build drops from ~25s to ~1.5s (arm64, measured).
+      .withEnvVariable("CARGO_PROFILE_DEV_DEBUG", "line-tables-only")
+  }
+
+  # Runs cargo under mold (intercepts ld/ld.lld, so -Dwarnings rustflags stay
+  # intact), then lets the kache daemon flush before the container exits.
+  let cargo(args: [String!]!): [String!]! {
+    ["sh", "-c", "mold -run cargo \"$@\"; rc=$?; kache daemon stop >/dev/null 2>&1; exit $rc", "cargo"] + args
+  }
+
+  """Build the bundled WASM plugins (github-org, gitlab-group)."""
+  pub plugins(
+    source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [".git", "target", "plugins/target"]),
+  ): Directory! {
+    # Plugins read their WIT from content/wit, so take both — and nothing else,
+    # so unrelated edits keep this layer cached.
+    let input = source.filter(include: ["plugins/**", "content/wit/**"])
+    let built = toolchain
+      .withDirectory("/src", input)
+      .withWorkdir("/src/plugins")
+      .withMountedCache("/src/plugins/target", cacheVolume("nanite-plugins-target-" + rustImage))
+      .withExec(["sh", "-euc", """
+        cargo build --locked --release -p github-org -p gitlab-group
+        kache daemon stop >/dev/null 2>&1 || true
+        mkdir -p /out
+        cp target/wasm32-wasip2/release/github_org.wasm /out/github-org.wasm
+        cp target/wasm32-wasip2/release/gitlab_group.wasm /out/gitlab-group.wasm
+      """])
+    built.directory("/out")
+  }
+
+  """Write the WASM plugins to content/plugins/ (needed before a host `cargo build`)."""
+  pub wasm(
+    source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [".git", "target", "plugins/target"]),
+    current: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: ["**", "!content", "!content/plugins", "!content/plugins/*.wasm"]),
+  ): Changeset! @generate {
+    current.withDirectory("content/plugins", plugins(source)).changes(current)
+  }
+
+  # Workspace source + freshly built plugins, with a persistent target dir.
+  let workspace(source: Directory!): Container! {
+    toolchain
+      .withDirectory("/src", source)
+      .withDirectory("/src/content/plugins", plugins(source))
+      .withWorkdir("/src")
+      .withMountedCache("/src/target", cacheVolume("nanite-target-" + rustImage))
+  }
+
+  """cargo fmt --check"""
+  pub fmt(
+    source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [".git", "target", "plugins/target"]),
+  ): Void @check {
+    toolchain.withDirectory("/src", source).withWorkdir("/src")
+      .withExec(cargo(["fmt", "--all", "--", "--check"])).sync
+    null
+  }
+
+  """clippy: pedantic/nursery/cargo, plus no unwrap/expect in lib+bin code"""
+  pub clippy(
+    source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [".git", "target", "plugins/target"]),
+  ): Void @check {
+    workspace(source)
+      .withExec(cargo(["clippy", "--locked", "--workspace", "--all-targets", "--all-features", "--",
+        "-D", "warnings", "-W", "clippy::pedantic", "-W", "clippy::nursery", "-W", "clippy::cargo",
+        "-A", "clippy::multiple-crate-versions"]))
+      .withExec(cargo(["clippy", "--locked", "--workspace", "--all-features", "--lib", "--bins", "--",
+        "-D", "clippy::unwrap_used", "-D", "clippy::expect_used", "-A", "clippy::multiple-crate-versions"]))
+      .sync
+    null
+  }
+
+  """nextest + doctests"""
+  pub test(
+    source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [".git", "target", "plugins/target"]),
+  ): Void @check {
+    workspace(source)
+      .withExec(cargo(["nextest", "run", "--locked", "--workspace", "--all-features"]))
+      .withExec(cargo(["test", "--locked", "--workspace", "--all-features", "--doc"]))
+      .sync
+    null
+  }
+
+  """rustdoc with warnings denied"""
+  pub doc(
+    source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [".git", "target", "plugins/target"]),
+  ): Void @check {
+    workspace(source)
+      .withEnvVariable("RUSTDOCFLAGS", "-D warnings")
+      .withExec(cargo(["doc", "--locked", "--workspace", "--all-features", "--no-deps"]))
+      .sync
+    null
+  }
+
+  """cargo deny check"""
+  pub deny(
+    source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [".git", "target", "plugins"]),
+  ): Void @check {
+    toolchain.withDirectory("/src", source).withWorkdir("/src")
+      .withExec(cargo(["deny", "check"])).sync
+    null
+  }
+}

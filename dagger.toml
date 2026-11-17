@@ -1,0 +1,12 @@
+[modules.nanite]
+source = "."
+main = true
+
+[modules.dagger-dang-sdk]
+source = "github.com/dagger/dang-sdk"
+
+[sdks.dang]
+module = "dagger-dang-sdk"
+
+[sdks.dang.scopes."."]
+is-module = true

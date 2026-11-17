@@ -1,6 +1,6 @@
 //! Compiled wasm artifacts for the first-party plugins, embedded into
 //! the nanite binary at build time. The build script asserts these
-//! exist; running `just build-plugins` refreshes them.
+//! exist; running `dagger generate -y` refreshes them.
 
 pub const GITHUB_ORG_WASM: &[u8] = include_bytes!("../../../content/plugins/github-org.wasm");
 
